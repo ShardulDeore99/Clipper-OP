@@ -1,0 +1,357 @@
+==============================================================================
+ STREAMCLIPPER (Clipper-OP)  -  START HERE
+==============================================================================
+
+ This file answers the basic questions: what is this, why use it, what do I
+ install, how do I run it, how do I use it, and what do I do when it breaks.
+ (The longer technical notes are in README.md. This file is the simple one.)
+
+
+------------------------------------------------------------------------------
+ 1. WHAT IS THIS?
+------------------------------------------------------------------------------
+
+ StreamClipper is a tool that runs on YOUR computer. You give it a long
+ video, a game stream or a podcast, and it finds the best moments (funny,
+ loud, exciting) and cuts them into short vertical clips (9:16, 1080x1920)
+ for Reels / Shorts / TikTok, with captions already burned in.
+
+ - It does NOT post anything anywhere. You review the clips first.
+ - Everything runs locally. The internet is used only to download the source
+   video and, once, the Whisper models and the caption font during setup.
+ - You are responsible for having the rights or permission to clip any
+   video you add.
+
+
+------------------------------------------------------------------------------
+ 2. WHY USE IT? (what problem it solves)
+------------------------------------------------------------------------------
+
+ Watching a 2-hour stream just to find 5 good moments is slow. This tool:
+
+   1. Listens to the audio and reads the speech (transcript).
+   2. Scores moments using loudness, laughter/shouting, keywords, chat
+      spikes and (optionally) face/motion changes.
+   3. Cuts clips that start 2-4 seconds BEFORE the moment and end on a
+      sentence end or a natural pause (not mid-word).
+   4. Crops to vertical while tracking the face, adds big captions with the
+      active word highlighted, and sets the loudness to about -14 LUFS.
+   5. Flags problems (clip starts mid-sentence, silence at the start/end,
+      face cut off, captions missing) and shows the reason.
+
+ It also has a LIVE mode: it watches a live stream and makes clips a few
+ seconds after something happens.
+
+
+------------------------------------------------------------------------------
+ 3. WHAT YOU NEED (requirements)
+------------------------------------------------------------------------------
+
+ Operating system : Windows 10/11 with PowerShell (the setup/run scripts
+                    are .ps1 files)
+ Python           : 3.11 (install 3.11 specifically, see note below)
+ FFmpeg + FFprobe : must be a FULL build (needs libass for captions and
+                    libx264). The "Gyan.FFmpeg" winget package is fine.
+ Deno (optional)  : a JavaScript runtime. Helps YouTube downloads work.
+ Disk space       : at least 5 GB free (downloads, caches, clips)
+ RAM              : 8 GB is workable; config.toml limits memory use to 5 GB
+ Internet         : for setup and for downloading source videos
+
+ Python packages (installed automatically from requirements.txt):
+
+   fastapi==0.115.6
+   uvicorn==0.34.0
+   yt-dlp[default]>=2026.08.19
+   faster-whisper==1.1.1
+   numpy>=1.26
+   opencv-python-headless==4.10.0.84
+   websockets>=12,<16
+   cryptography>=42
+
+ NOTE about Python version: setup.ps1 runs "py -3.11 -m venv .venv" when the
+ Python launcher (py) exists. So if you only have Python 3.12 or 3.13, setup
+ will fail with "Python 3.11+ is required". Installing Python 3.11 with the
+ command below avoids that.
+
+
+------------------------------------------------------------------------------
+ 4. INSTALL EVERYTHING IN ONE GO
+------------------------------------------------------------------------------
+
+ Open PowerShell (right-click Start > Terminal / Windows PowerShell).
+
+ STEP A - Install the programs (Python, FFmpeg, Deno). Copy and paste this
+ whole block once. Then CLOSE PowerShell and open a new one so the new
+ programs are found:
+
+   winget install -e --id Python.Python.3.11 ; winget install -e --id Gyan.FFmpeg ; winget install -e --id DenoLand.Deno
+
+ STEP B - Go to the project folder (change the path to where you unzipped it):
+
+   cd "C:\path\to\Clipper-OP-main"
+
+ STEP C - Install all Python packages, download the caption font and the
+ Whisper models, and run the health check. This is ONE command, and it is
+ the same command you use to start the app every time:
+
+   .\run.ps1
+
+ The first run takes a while (it creates the .venv folder, installs the
+ packages, downloads the Anton font and the Whisper models). After that,
+ it starts in a few seconds.
+
+ If PowerShell says "running scripts is disabled", run this once in the same
+ window and then try again:
+
+   Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+
+ --- Prefer to install the Python packages manually? ---------------------
+ Inside the project folder, in PowerShell:
+
+   py -3.11 -m venv .venv
+   .\.venv\Scripts\python -m pip install --upgrade pip
+   .\.venv\Scripts\python -m pip install -r requirements.txt
+   .\.venv\Scripts\python -m streamclipper fetch-models
+
+ Or, as a single pip line without requirements.txt (same packages):
+
+   .\.venv\Scripts\python -m pip install "fastapi==0.115.6" "uvicorn==0.34.0" "yt-dlp[default]>=2026.08.19" "faster-whisper==1.1.1" "numpy>=1.26" "opencv-python-headless==4.10.0.84" "websockets>=12,<16" "cryptography>=42"
+
+ Only if you want to run the tests (adds pytest and httpx):
+
+   .\.venv\Scripts\python -m pip install -r requirements-dev.txt
+
+
+------------------------------------------------------------------------------
+ 5. HOW TO RUN
+------------------------------------------------------------------------------
+
+ Every time you want to use it:
+
+   cd "C:\path\to\Clipper-OP-main"
+   .\run.ps1
+
+ Your browser opens at   http://127.0.0.1:8765
+ (If it does not open, type that address into your browser yourself.)
+
+ To stop the app, go back to the PowerShell window and press Ctrl+C.
+
+ Start without opening the browser automatically:
+
+   .\run.ps1 --no-browser
+
+ The address and port can be changed in config.toml under [web]. Keep the
+ host as 127.0.0.1 so that only your own computer can open the UI.
+
+
+------------------------------------------------------------------------------
+ 6. HOW TO USE IT (the normal workflow)
+------------------------------------------------------------------------------
+
+ A) Make clips from a video or podcast
+    1. Open the "Video or podcast" tab.
+    2. Paste a link (YouTube etc.) or the path of a video file on your PC.
+    3. Choose the language:
+         auto     - English stays English, Hindi/Hinglish is written in
+                    Roman letters (e.g. "mai kyu aau nahi tu ja")
+         en       - English only
+         hinglish - force Hindi/Hindi+English in Roman letters
+       If Hinglish is detected as English, pick Hinglish yourself.
+    4. Choose the speed:
+         fast     - base Whisper model, 720p, quicker (default)
+         quality  - small Whisper model, slower encode, better text
+    5. Press "Add source", then Continue.
+    6. A window asks for the CLIP LOOK: layout, gaming style, caption
+       position/look/size, with a live preview. Tick "Remember this look"
+       to keep it for next time.
+    7. Wait. The job moves through these stages:
+         download > audio > transcribe > segment > score > plan >
+         frame > render > check > save
+    8. Open the "My clips" tab. For each clip you can: preview, trim, edit
+       captions, change the layout, download, or delete it.
+
+ B) Make clips from a LIVE stream
+    1. Open the "Live stream" tab (or in PowerShell run:
+         .\.venv\Scripts\python -m streamclipper live <stream-link>  ).
+    2. It keeps a rolling recording (180 s by default), watches audio
+       loudness and chat activity, and cuts a clip when a moment triggers.
+    3. Twitch, YouTube and Kick links are recognised automatically.
+    4. Chat is optional. Without chat, audio monitoring still works.
+       To use chat, set the credentials in PowerShell BEFORE starting the
+       app (they only last for that PowerShell window):
+
+         $env:YOUTUBE_API_KEY = "your-youtube-api-key"
+         $env:TWITCH_CLIENT_ID = "your-twitch-client-id"
+         $env:TWITCH_USER_ACCESS_TOKEN = "your-user-token"
+         $env:KICK_ACCESS_TOKEN = "your-kick-token"
+         $env:KICK_BROADCASTER_USER_ID = "your-kick-broadcaster-id"
+
+       YouTube key can also be saved in the app under "Profile" (stored in
+       the Windows Credential Manager). Twitch needs the user:read:chat
+       scope. Kick needs a public HTTPS address for its webhook, so it does
+       not work on plain localhost.
+
+ C) Layouts you can pick
+    gaming  : facecam (16:9) on top, game (16:9) below, blurred background
+    normal  : the 16:9 video centred, with blur above and below
+    single  : one speaker, face-centred with headroom
+    two     : two speakers stacked
+    corner  : rounded facecam box on top of the gameplay
+    Set the default in config.toml ([framing] layout / facecam_style) or
+    change it per clip in the UI.
+
+
+------------------------------------------------------------------------------
+ 7. COMMAND LIST (command line)
+------------------------------------------------------------------------------
+
+ Run any of these from the project folder as:
+
+   .\.venv\Scripts\python -m streamclipper <command>
+
+   doctor                    check FFmpeg, libass, captions, yt-dlp, etc.
+   fetch-models              download the Whisper models (one time)
+   serve                     start the web UI (what run.ps1 does)
+   process <link-or-file>    add a source and process it right now
+   add <link-or-file>        add a source to the queue without running it
+   run [job-id]              run one queued job, or all queued jobs
+   list                      list jobs and their status
+   export [clip-id]          final export (crf 18, 1080x1920) of ready clips
+   live <link>               monitor a live stream and clip moments
+   update-ytdlp [--nightly]  update yt-dlp (fixes most YouTube errors)
+
+ Extras: add --debug before the command to save, for every clip, a contact
+ sheet of 8 frames, the chosen start/end with reasons, the layout, and the
+ .ass/.srt caption files (saved in data/debug/).
+
+ Example:
+
+   .\.venv\Scripts\python -m streamclipper --debug process "C:\Videos\game.mp4" --language hinglish --mode fast
+
+ There is also a separate analysis tool (FragBytez clip engine) that only
+ analyses a local recording and prints JSON:
+
+   .\.venv\Scripts\python -m clip_engine "C:\Videos\game.mp4" --compact
+
+
+------------------------------------------------------------------------------
+ 8. WHERE THINGS ARE (folders and files)
+------------------------------------------------------------------------------
+
+   run.ps1            start the app (sets up first if needed)
+   setup.ps1          one-time setup (venv, packages, font, models, check)
+   config.toml        ALL settings, with comments
+   glossary.txt       fix words in captions, one per line:  heard => written
+   requirements.txt   Python packages needed
+   assets/fonts/      caption font (Anton)
+   streamclipper/     the main app (pipeline, web UI, live monitor)
+   clip_engine/       audio / transcript / visual signal analysis
+   tests/             automated tests
+   data/              created on first run: downloads, caches, database,
+                      rendered clips and logs. Safe to delete to start
+                      fresh (this removes your clips too).
+   data/logs/streamclipper.log   the log file, useful when something fails
+
+
+------------------------------------------------------------------------------
+ 9. COMMON SETTINGS YOU MAY WANT TO CHANGE (config.toml)
+------------------------------------------------------------------------------
+
+   [general] mode = "fast"            "fast" or "quality"
+   [clips] max_per_source = 0         0 = unlimited clips per source
+   [clips] min/target/max_seconds     12 / 20-35 / 60 second clip lengths
+   [moments] min_score = 0.40         lower = more clips, higher = pickier
+   [moments] keywords                 add your creator's catchphrases
+   [download] max_height = 720        cap source resolution (saves time/disk)
+   [download] cookies_from_browser    "firefox", "chrome" or "edge" if a
+                                      site refuses downloads (HTTP 403)
+   [transcribe] model_fast/quality    tiny, base or small (medium/large are
+                                      refused on purpose)
+   [captions] font_size, y_center     caption size and position
+   [render] overlays = false          reaction stickers (LOL/OMG/WOW), off by
+                                      default
+   [tools] ffmpeg = "ffmpeg"          put the full path here if FFmpeg is not
+                                      on PATH, e.g. "C:/ffmpeg/bin/ffmpeg.exe"
+
+ After editing config.toml: save it and restart the app.
+
+
+------------------------------------------------------------------------------
+ 10. TROUBLESHOOTING
+------------------------------------------------------------------------------
+
+ ALWAYS try this first - it checks almost everything and tells you what is
+ wrong:
+
+   .\.venv\Scripts\python -m streamclipper doctor
+
+ "[FAIL] ffmpeg" / ffmpeg not found
+   Install it (winget install -e --id Gyan.FFmpeg), then open a NEW
+   PowerShell window. Or set the full path in config.toml under [tools].
+
+ "libass (captions)" fails, or captions are missing in the clips
+   Your FFmpeg build is too small. Install the full build from step 4 (the
+   Gyan.FFmpeg package) and run doctor again.
+
+ "Python 3.11+ is required" during setup
+   Install Python 3.11 (step 4A), open a new PowerShell, delete the .venv
+   folder if it exists, and run .\run.ps1 again.
+
+ Scripts are disabled / cannot be loaded
+   Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+
+ A package fails to install (version not found)
+   requirements.txt notes that its pins were not verified against PyPI.
+   Open requirements.txt, change the failing line to a version that exists
+   (or remove the "==" version), and run .\run.ps1 again.
+
+ YouTube "HTTP Error 403" or other download errors
+   1. .\.venv\Scripts\python -m streamclipper update-ytdlp   (then restart)
+   2. winget install -e --id DenoLand.Deno   (JavaScript runtime)
+   3. In config.toml set  cookies_from_browser = "firefox"
+
+ Hinglish is written as English
+   Choose "Hinglish" as the language for that source instead of "auto".
+
+ Caption font looks wrong (Impact / Arial Black instead of Anton)
+   The Anton download failed. Put Anton-Regular.ttf into assets\fonts.
+
+ It is very slow
+   - Use mode "fast" (base model) and keep max_height = 720.
+   - Close other heavy programs. Transcription is the slowest stage and
+     runs on the CPU. Longer videos take much longer.
+   - Process one source at a time (the app already does this).
+
+ "No ready clips to export"
+   Clips must reach status "ready" in My clips before "export" can run.
+
+ Still stuck?
+   Open data\logs\streamclipper.log and read the last lines, or run the
+   command again with --debug.
+
+
+------------------------------------------------------------------------------
+ 11. RUN THE TESTS (optional, for developers)
+------------------------------------------------------------------------------
+
+   .\.venv\Scripts\python -m pip install -r requirements-dev.txt
+   .\.venv\Scripts\python -m unittest discover -s tests -t . -v
+
+ The tests render real video, so they take several minutes.
+
+
+------------------------------------------------------------------------------
+ 12. LIMITS TO KNOW ABOUT
+------------------------------------------------------------------------------
+
+ - Moment detection uses simple signals (loudness, laughter/shouting terms,
+   keywords, chat spikes, motion, face presence). It does NOT truly
+   understand jokes or emotions, so always review clips before posting.
+ - Face tracking uses OpenCV Haar cascades: best on front-facing faces
+   (facecams, podcasts), weaker on side views or tiny faces.
+ - Live chat triggers can be a little off, because messages are timestamped
+   when they arrive and streams have their own delay.
+ - Built and tested for Windows. The Intel Quick Sync (h264_qsv) speed-up is
+   optional; without it the app uses libx264 (slower, still works).
+
+==============================================================================

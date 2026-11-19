@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#101016">
+<title>Profile · FragBytez</title>
+<style>
+  :root { --paper:#f5f4ed; --panel:#fffefa; --ink:#17151d; --muted:#716d7a; --line:#dedbd1; --lime:#b9f34a; --violet:#7057ff; --fail:#f04f68; }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; padding:34px 18px; color:var(--ink); font:16px/1.5 "Segoe UI",system-ui,sans-serif; background:radial-gradient(circle at 8% 4%,rgba(185,243,74,.24),transparent 22rem),radial-gradient(circle at 92% 10%,rgba(255,120,183,.16),transparent 24rem),var(--paper); }
+  main { max-width:760px; margin:auto; }
+  header { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:32px; }
+  h1 { margin:0; font-size:clamp(2rem,6vw,3rem); letter-spacing:-.06em; }
+  h2 { margin:0 0 10px; }
+  p { color:var(--muted); }
+  .card { padding:26px; background:var(--panel); border:1.5px solid var(--ink); border-radius:18px; box-shadow:6px 6px 0 #e4e0d5; }
+  .status { display:inline-flex; align-items:center; gap:8px; margin:8px 0 20px; padding:5px 12px; border-radius:99px; background:#eeecff; font-size:.88rem; font-weight:700; }
+  .dot { width:9px; height:9px; border-radius:50%; background:#aaa6b3; }
+  .dot.on { background:#58a836; }
+  label { display:grid; gap:7px; margin:18px 0 12px; font-size:.9rem; font-weight:700; }
+  input { width:100%; padding:12px 14px; border:1.5px solid var(--line); border-radius:10px; font:inherit; }
+  input:focus-visible,button:focus-visible,a:focus-visible { outline:3px solid rgba(112,87,255,.3); outline-offset:2px; }
+  .actions { display:flex; gap:10px; flex-wrap:wrap; }
+  button,a.btn { display:inline-block; padding:10px 15px; border:1.5px solid var(--ink); border-radius:10px; background:#fff; color:var(--ink); font:inherit; font-weight:800; text-decoration:none; cursor:pointer; }
+  button.primary { color:#fff; background:var(--ink); box-shadow:3px 3px 0 var(--lime); }
+  button:disabled { opacity:.55; cursor:wait; }
+  .note { margin:16px 0 0; padding:12px 14px; border-radius:10px; background:#f0edff; font-size:.9rem; }
+  #message { min-height:1.4em; margin:14px 0 0; color:var(--fail); }
+  @media(max-width:520px) { header { align-items:flex-start; flex-direction:column; } .card { padding:20px; } }
+</style>
+<link rel="stylesheet" href="/static/theme.css">
+</head>
+<body class="profile-page">
+<main>
+  <header><a class="brand" href="/" aria-label="FragBytez home"><span class="mark" aria-hidden="true">▶</span><span>FRAGBYTEZ</span></a><a class="btn" href="/app">← Back to workspace</a></header>
+  <h1>Profile settings</h1>
+  <section class="card" aria-labelledby="youtube-title">
+    <h2 id="youtube-title">YouTube live chat</h2>
+    <p>Add an API key to let StreamClipper read chat from YouTube live streams. This is optional; audio monitoring and scoring work without it.</p>
+    <div class="status"><span id="status-dot" class="dot"></span><span id="status-text">Checking settings…</span></div>
+    <form id="key-form">
+      <label for="api-key">YouTube Data API key
+        <input id="api-key" name="api-key" type="password" autocomplete="new-password" placeholder="Paste API key to save or replace it" maxlength="300">
+      </label>
+      <div class="actions">
+        <button id="save" class="primary" type="submit">Save key securely</button>
+        <button id="remove" type="button">Remove saved key</button>
+      </div>
+    </form>
+    <p class="note">The key is stored in your computer’s secure credential store. StreamClipper never sends the saved value back to this page. Restrict the key to the YouTube Data API in Google Cloud.</p>
+    <p id="message" role="status" aria-live="polite"></p>
+  </section>
+</main>
+<script>
+const statusText = document.querySelector("#status-text");
+const statusDot = document.querySelector("#status-dot");
+const message = document.querySelector("#message");
+const keyInput = document.querySelector("#api-key");
+const saveButton = document.querySelector("#save");
+const removeButton = document.querySelector("#remove");
+async function request(path, options = {}) {
+  const response = await fetch(path, { headers: { "Content-Type": "application/json" }, ...options });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.detail || "Could not update profile settings.");
+  return data;
+}
+function showStatus(state) {
+  statusText.textContent = state.configured ? `Connected · ${state.source}` : "Not connected · YouTube chat stays off";
+  statusDot.classList.toggle("on", state.configured);
+}
+async function refresh() {
+  try { const data = await request("/api/profile"); showStatus(data.youtube); }
+  catch (error) { message.textContent = error.message; statusText.textContent = "Settings unavailable"; }
+}
+document.querySelector("#key-form").addEventListener("submit", async (event) => {
+  event.preventDefault(); message.textContent = "";
+  if (!keyInput.value.trim()) { message.textContent = "Paste a key first."; return; }
+  saveButton.disabled = true;
+  try {
+    const data = await request("/api/profile/youtube-key", { method: "PUT", body: JSON.stringify({ youtube_api_key: keyInput.value }) });
+    keyInput.value = ""; showStatus(data.youtube); message.style.color = "#27752c"; message.textContent = "Key saved securely. It will be used for the next live monitor you start.";
+  } catch (error) { message.style.color = ""; message.textContent = error.message; }
+  finally { saveButton.disabled = false; }
+});
+removeButton.addEventListener("click", async () => {
+  message.textContent = ""; removeButton.disabled = true;
+  try {
+    const data = await request("/api/profile/youtube-key", { method: "DELETE" }); showStatus(data.youtube);
+    message.style.color = "#27752c"; message.textContent = "Saved key removed. YouTube chat is now optional and disconnected unless configured through the environment.";
+  } catch (error) { message.style.color = ""; message.textContent = error.message; }
+  finally { removeButton.disabled = false; }
+});
+refresh();
+</script>
+</body>
+</html>

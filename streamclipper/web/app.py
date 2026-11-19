@@ -216,8 +216,6 @@ def create_app(cfg):
         except StreamClipperError as e:
             raise HTTPException(400, str(e))
         transcript = (body.moment_transcript or "").strip()
-        if transcript and len(transcript) > 12000:
-            raise HTTPException(400, "The moment transcript must be under 12,000 characters.")
         if transcript and not parse_targets(transcript):
             raise HTTPException(400, "Add at least one exact spoken line with four or more words.")
         job_id = db.create_job(source, kind, mode, language)

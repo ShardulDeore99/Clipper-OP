@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS jobs(
   status TEXT NOT NULL DEFAULT 'queued',      -- queued | running | done | failed
   stage TEXT, progress REAL DEFAULT 0,        -- progress = fraction of the current stage
   error TEXT, meta TEXT DEFAULT '{}',
-  created REAL, updated REAL);
+  created REAL, updated REAL, started REAL);
 CREATE TABLE IF NOT EXISTS stage_runs(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   job_id INTEGER NOT NULL, stage TEXT NOT NULL,
@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS clips(
   job_id INTEGER NOT NULL, start REAL, end REAL, path TEXT,
   status TEXT, data TEXT DEFAULT '{}', created REAL);
 """
-FIELDS = {"language", "title", "source", "kind", "mode", "source_key", "status", "stage", "progress", "error"}
+FIELDS = {"language", "title", "source", "kind", "mode", "source_key", "status", "stage", "progress", "error", "started"}
 
 
 class Database:
@@ -36,6 +36,8 @@ class Database:
                 c.execute("ALTER TABLE jobs ADD COLUMN language TEXT")  # added in M2
             if "cid" not in [r["name"] for r in c.execute("PRAGMA table_info(clips)")]:
                 c.execute("ALTER TABLE clips ADD COLUMN cid TEXT")  # added in M3
+            if "started" not in [r["name"] for r in c.execute("PRAGMA table_info(jobs)")]:
+                c.execute("ALTER TABLE jobs ADD COLUMN started REAL")
 
     @contextmanager
     def _tx(self):

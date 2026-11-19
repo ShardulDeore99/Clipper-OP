@@ -26,7 +26,7 @@ class Context:
 
 
 def run_job(cfg, db: Database, job_id: int) -> Timer:
-    db.update_job(job_id, status="running", error=None, stage="download", progress=0.0)
+    db.update_job(job_id, status="running", error=None, stage="download", progress=0.0, started=time.time())
     db.clear_stage_runs(job_id)
     timer, current = Timer(), "download"
     try:

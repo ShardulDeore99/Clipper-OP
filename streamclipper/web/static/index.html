@@ -83,6 +83,15 @@
   .chip.done { background: var(--lime); color: var(--ink); border: 1.5px solid var(--ink); font-weight: 800; }
   .chip.running { background: var(--run); border: 1.5px solid var(--ink); color: var(--ink); font-weight: 800; }
   .chip.failed { background: var(--fail); color: #fff; border-color: var(--fail); }
+  .job-tracker { margin: 14px 0 16px; }
+  .job-progress-head { display:flex; justify-content:space-between; gap:12px; margin-bottom:6px; font-size:.88rem; }
+  .job-progress-head strong { color:var(--ink); }
+  .job-progress-head span { color:var(--muted); white-space:nowrap; }
+  .job-progress-track { height:12px; border:1.5px solid var(--ink); border-radius:99px; background:#fff; overflow:hidden; }
+  .job-progress-fill { height:100%; background:linear-gradient(90deg,var(--violet),var(--pink)); border-radius:inherit; transition:width .4s ease; }
+  .job-tracker.queued .job-progress-fill { width:0; }
+  .job-tracker.failed .job-progress-fill { background:var(--fail); }
+  .job-tracker.done .job-progress-fill { background:var(--lime); }
   /* The stage strip: one segment per pipeline stage, in order. */
   .strip { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; }
   .seg { font-size: .72rem; color: var(--muted); min-width: 0; }
@@ -113,6 +122,7 @@
   .clip-grid .clip h3 { margin-top: 14px; }
   .clip-grid .clip textarea { min-height: 78px; }
   .clip-grid .project-head { grid-column: 1 / -1; }
+  .clip-grid > .job-tracker { grid-column: 1 / -1; width: 100%; }
   #all-sources-back { min-height: 44px; }
   .clip-grid .clip-compact { cursor: pointer; transition: transform .16s, border-color .16s; }
   .clip-grid .clip-compact:hover { transform: translateY(-2px); border-color: var(--lime); }
@@ -340,6 +350,7 @@ async function api(path, opts) {
 
 function strip(job) {
   const done = Object.fromEntries(job.timings.map((t) => [t.stage, t]));
+  const stageLabels = { download: "Download", audio: "Audio", transcribe: "Transcribe", segment: "Speech segments", score: "Find moments", plan: "Plan clips", frame: "Frame clips", render: "Render clips", check: "Check clips", save: "Save clips" };
   return el("div", { class: "strip", role: "list" }, meta.planned.map((name) => {
     let cls = "later", fill = null, note = "";
     if (meta.implemented.includes(name)) {
@@ -350,8 +361,32 @@ function strip(job) {
     }
     return el("div", { class: `seg ${cls}`, role: "listitem" },
       el("div", { class: "bar" }, fill != null ? el("i", { style: `width:${Math.max(fill, 6)}%` }) : null),
-      el("b", {}, name), el("span", {}, note));
+      el("b", { title: stageLabels[name] || name }, stageLabels[name] || name), el("span", {}, note));
   }));
+}
+
+const STAGE_LABELS = { download: "Downloading source", audio: "Analyzing audio", transcribe: "Transcribing audio", segment: "Finding speech segments", score: "Finding moments", plan: "Planning clips", frame: "Framing clips", render: "Rendering clips", check: "Checking clips", save: "Saving clips" };
+function elapsedTime(job) {
+  if (!job.started) return "Not started";
+  const end = job.status === "running" ? Date.now() / 1000 : (job.updated || Date.now() / 1000);
+  const seconds = Math.max(0, Math.floor(end - job.started));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+function overallProgress(job) {
+  const index = Math.max(0, meta.planned.indexOf(job.stage));
+  return job.status === "done" ? 100 : job.status === "running"
+    ? Math.round(((index + Math.max(0, Math.min(1, job.progress || 0))) / meta.planned.length) * 100) : 0;
+}
+
+function progressPanel(job) {
+  const currentStage = STAGE_LABELS[job.stage] || job.stage || "Preparing";
+  const progress = overallProgress(job);
+  const progressLabel = job.status === "queued" ? "Waiting to start" : job.status === "done" ? "Processing complete" : job.status === "failed" ? `Stopped during ${currentStage.toLowerCase()}` : `${currentStage} - ${Math.round((job.progress || 0) * 100)}% of this step`;
+  return el("div", { class: `job-tracker ${job.status}` },
+    el("div", { class: "job-progress-head" }, el("strong", {}, progressLabel), el("span", {}, `Time ${elapsedTime(job)} | ${progress}% overall`)),
+    el("div", { class: "job-progress-track", role: "progressbar", "aria-label": "Overall processing progress", "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": String(progress) },
+      el("div", { class: "job-progress-fill", style: `width:${progress}%` })),
+    strip(job));
 }
 
 function card(job) {
@@ -371,7 +406,7 @@ function card(job) {
   return el("article", { class: "job", "data-job-id": job.id },
     el("div", { class: "head" }, el("div", { class: "title" }, job.title || "Preparing…"), el("span", { class: `chip ${job.status}` }, label)),
     el("div", { class: "src" }, job.source),
-    strip(job),
+    progressPanel(job),
     facts && el("p", { class: "facts" }, facts),
     job.error && el("div", { class: "error", role: "alert" }, `Failed at ${job.stage}: ${job.error}`),
     el("div", { class: "actions" },
@@ -659,7 +694,7 @@ async function loadClips(force) {
     else if (openProjectId == null) $("#clip-analysis").replaceChildren(clipScoreChart(selectedClips));
     else loadProjectAnalysis(openProjectId);
     const sig = JSON.stringify([clips, jobs, openProjectId, openClipId, $("#order").value]);
-    if (sig === lastClips && !force) return;
+    if (sig === lastClips && !force && !jobs.some((job) => job.status === "running")) return;
     lastClips = sig;
     const box = $("#clips");
     box.className = inDetail ? "clip-detail" : inProject ? "clip-grid" : "";
@@ -692,7 +727,9 @@ async function loadClips(force) {
       const nodes = [el("div", { class: "project-head" },
         el("div", { class: "row" }, el("span", { class: "folder-icon", "aria-hidden": "true" }, "▰"),
           el("div", {}, el("h3", {}, job.title || job.source || `Project ${job.id}`),
-            el("div", { class: "src" }, job.source || "Source unavailable"))))];
+            el("div", { class: "src" }, job.source || "Source unavailable")))),
+        progressPanel(job),
+        job.error && el("div", { class: "error", role: "alert" }, `Failed at ${job.stage}: ${job.error}`)];
       for (const c of list) {
         const csig = JSON.stringify(c);
         let rec = clipNodes.get(c.id);

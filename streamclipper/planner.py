@@ -224,6 +224,36 @@ def plan_clips(cands, words, sents, starts, ends, p, duration):
     return kept, rejected
 
 
+def plan_time_ranges(ranges, words, sents, starts, ends, p, duration):
+    """Create one clip per user-supplied interval without snapping or merging its boundaries."""
+    clips, rejected = [], []
+    for start, end in ranges:
+        key_t = (start + end) / 2
+        if end > duration:
+            rejected.append({"t": round(key_t, 2), "reason": f"range ends after the source ({duration:.1f} s)"})
+            continue
+        if end - start < p["min_s"] or end - start > p["max_s"]:
+            rejected.append({"t": round(key_t, 2), "reason": f"range length must be {p['min_s']:g}-{p['max_s']:g} s"})
+            continue
+        indices = [i for i, word in enumerate(words) if word["end"] > start and word["start"] < end]
+        if not indices or not sents:
+            rejected.append({"t": round(key_t, 2), "reason": "no transcript words found inside the range"})
+            continue
+        i0, i1 = indices[0], indices[-1]
+        payoff_t = min(end, words[i1]["end"])
+        clip = make_clip(i0, i1, key_t, payoff_t, 0.95, {"speech": 0.9}, 0.0, end,
+                         "user-supplied timestamp start", "user-supplied timestamp end",
+                         ["kept the supplied timestamp range"], words, sents, starts, ends, p, duration)
+        clip["start"], clip["end"] = round(start, 3), round(end, 3)
+        clip["duration"] = round(end - start, 2)
+        clip["key_moment"] = round(key_t, 2)
+        clip["provided_timestamp_range"] = True
+        clips.append(clip)
+    for n, clip in enumerate(clips, 1):
+        clip["n"] = n
+    return clips, rejected
+
+
 def params_from_config(cfg) -> dict:
     c, m = cfg["clips"], cfg["moments"]
     return {"min_s": c["min_seconds"], "max_s": c["max_seconds"], "target_min": c["target_min_seconds"],

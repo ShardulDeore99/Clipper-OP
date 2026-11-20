@@ -14,7 +14,26 @@ from .errors import StageError
 from .romanize import casual_variants, has_devanagari, romanize
 from .signals import norm
 
-COLORS = {"lime": "&H00FF00&", "yellow": "&H00FFFF&", "white": "&HFFFFFF&"}
+COLORS = {
+    "lime": "&H00FF00&", "yellow": "&H00FFFF&", "white": "&HFFFFFF&",
+    # ASS colors are written as &HAABBGGRR&.
+    "funny": "&H0000E6FF&",    # #FFE600
+    "hype": "&H0066FF00&",     # #00FF66
+    "rage": "&H002D2DFF&",     # #FF2D2D
+    "fail": "&H00008A&",        # #FF8A00
+    "scary": "&H00FFE500&",     # #00E5FF
+    "wholesome": "&H00C87AFF&", # #FF7AC8
+    "neutral": "&H0000E6FF&",   # #FFE600
+}
+THEME_ACCENTS = {
+    "funny": "&H002D2DFF&",     # #FF2D2D red
+    "hype": "&H0000E6FF&",      # #FFE600 yellow
+    "rage": "&H0000E6FF&",      # #FFE600 yellow
+    "fail": "&H00FFE500&",      # #00E5FF cyan
+    "scary": "&H002D2DFF&",     # #FF2D2D red
+    "wholesome": "&H00FFFFFF&", # #FFFFFF white
+    "neutral": "&H00FFFFFF&",   # #FFFFFF white
+}
 BAND = (1000, 1500)  # captions live here: lower-middle, above the bottom 20% (y > 1536)
 
 
@@ -81,19 +100,21 @@ def clean_token(tok: str) -> tuple[str, bool]:
     return kept.upper(), kept != t
 
 
-def build_groups(words: list[dict], per=(2, 3)) -> list[list[dict]]:
+def build_groups(words: list[dict], per=(2, 5)) -> list[list[dict]]:
     groups, cur = [], []
     for w in words:
         if cur:
-            gap, dur = w["start"] - cur[-1]["end"], w["end"] - cur[0]["start"]
+            gap = w["start"] - cur[-1]["end"]
             full = len(cur) >= per[1]
-            enough = len(cur) >= per[0] and (dur >= 1.2 or END_RE.search(cur[-1]["w"]))
+            enough = END_RE.search(cur[-1]["w"])
             if full or enough or gap >= 0.45:
                 groups.append(cur)
                 cur = []
         cur.append(w)
     if cur:
-        if len(cur) == 1 and groups and len(groups[-1]) < per[1] and cur[0]["start"] - groups[-1][-1]["end"] < 0.45:
+        if (len(cur) == 1 and groups and len(groups[-1]) < per[1]
+                and not END_RE.search(groups[-1][-1]["w"])
+                and cur[0]["start"] - groups[-1][-1]["end"] < 0.45):
             groups[-1] += cur
         else:
             groups.append(cur)
@@ -125,6 +146,8 @@ def _overlap_px(y_center, rect, half_h=110, margin=20) -> float:
 def choose_y(cfg, t0, t1, faces_fn) -> int:
     """Default y, else the nearest allowed y with no face under the caption, else the least-covered one."""
     base = cfg["captions"]["y_center"]
+    if cfg["captions"].get("position_locked"):
+        return base
     if faces_fn is None:
         return base
     rects = [r for k in (t0, (t0 + t1) / 2, t1) for r in faces_fn(k)]
@@ -136,6 +159,7 @@ def choose_y(cfg, t0, t1, faces_fn) -> int:
 def make_ass(cfg, font: dict, words: list[dict], faces_fn=None, extra_events: list[str] | None = None) -> tuple[str, dict]:
     c = cfg["captions"]
     color = COLORS.get(c["highlight_color"], COLORS["lime"])
+    accent_color = THEME_ACCENTS.get(c["highlight_color"], "&H00FFFFFF&")
     box = c.get("look") == "box"  # dark rounded-looking box behind the words: readable on bright game HUDs
     cap_outline, cap_border, cap_width, cap_shadow = ("&H10101010", 3, 16, 0) if box else ("&H00000000", 1, 9, 3)
     stripped = 0
@@ -150,14 +174,16 @@ def make_ass(cfg, font: dict, words: list[dict], faces_fn=None, extra_events: li
     for gi, g in enumerate(groups):
         nxt = groups[gi + 1][0]["start"] if gi + 1 < len(groups) else None
         y = choose_y(cfg, g[0]["start"], g[-1]["end"], faces_fn)
+        x = c.get("x_center", 540)
         for j, w in enumerate(g):
             t0 = w["start"]
             t1 = g[j + 1]["start"] if j + 1 < len(g) else w["end"] + 0.12
             if nxt is not None:
                 t1 = min(t1, nxt - 0.02)
             t1 = max(t1, t0 + 0.08)
-            shown = [(f"{{\\c{color}}}{x['w']}{{\\c&HFFFFFF&}}" if k == j else x["w"]) for k, x in enumerate(g)]
-            events.append(f"Dialogue: 0,{_ts(t0)},{_ts(t1)},Cap,,0,0,0,,{{\\an5\\pos(540,{y})}}{_lines(shown, c['max_lines'])}")
+            active_color = accent_color if j == len(g) - 1 else color
+            shown = [(f"{{\\c{active_color}}}{x['w']}{{\\c&HFFFFFF&}}" if k == j else x["w"]) for k, x in enumerate(g)]
+            events.append(f"Dialogue: 0,{_ts(t0)},{_ts(t1)},Cap,,0,0,0,,{{\\an5\\pos({x},{y})}}{_lines(shown, c['max_lines'])}")
     head = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
@@ -179,16 +205,31 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
 def probe_time(words: list[dict]) -> float | None:
-    """A moment when a caption is certainly on screen: inside the middle word."""
-    if not words:
+    """Choose the middle of a long caption event that contains renderable text."""
+    tokens = []
+    for word in words:
+        text, _ = clean_token(word["w"])
+        if text:
+            tokens.append({**word, "w": text})
+    if not tokens:
         return None
-    w = words[len(words) // 2]
-    return round(w["start"] + min(0.1, (w["end"] - w["start"]) / 2), 2)
+    groups = build_groups(tokens)
+    events = []
+    for gi, group in enumerate(groups):
+        next_start = groups[gi + 1][0]["start"] if gi + 1 < len(groups) else None
+        for j, word in enumerate(group):
+            end = group[j + 1]["start"] if j + 1 < len(group) else word["end"] + 0.12
+            if next_start is not None:
+                end = min(end, next_start - 0.02)
+            if end > word["start"]:
+                events.append((word["start"], end, len(group)))
+    start, end, _ = max(events, key=lambda span: (span[2] > 1, span[1] - span[0]))
+    return round(start + (end - start) / 2, 2)
 
 
 def verify_render(ffmpeg: str, workdir: Path, t: float, min_pixels: int = 300) -> int:
     """Draw subs.ass over black at time t using the render's own relative paths. Returns bright-pixel count."""
-    cmd = [ffmpeg, "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", f"color=c=black:s=540x960:r=10:d={t + 0.7:.2f}",
+    cmd = [ffmpeg, "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", f"color=c=black:s=540x960:r=30:d={t + 0.7:.2f}",
            "-vf", "subtitles=subs.ass:fontsdir=fonts,format=gray", "-ss", f"{t:.2f}", "-frames:v", "1", "-f", "rawvideo", "-"]
     p = subprocess.run(cmd, capture_output=True, cwd=workdir)
     if p.returncode != 0:

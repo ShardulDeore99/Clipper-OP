@@ -17,7 +17,7 @@ from ..live import LiveManager
 from ..pipeline import PLANNED, STAGES, run_job
 from ..stages.download import classify
 from ..stages.transcribe import LANGUAGES, normalize_language
-from clip_engine.ai.transcript_matcher import parse_targets
+from clip_engine.ai.transcript_matcher import parse_targets, parse_time_ranges
 
 log = logging.getLogger("streamclipper")
 STATIC = Path(__file__).parent / "static"
@@ -216,8 +216,8 @@ def create_app(cfg):
         except StreamClipperError as e:
             raise HTTPException(400, str(e))
         transcript = (body.moment_transcript or "").strip()
-        if transcript and not parse_targets(transcript):
-            raise HTTPException(400, "Add at least one exact spoken line with four or more words.")
+        if transcript and parse_time_ranges(transcript) is None and not parse_targets(transcript):
+            raise HTTPException(400, "Add one valid time range per line (for example 0:14-0:38), or an exact spoken line with four or more words.")
         job_id = db.create_job(source, kind, mode, language)
         meta = {"style": style} if style else {}
         if transcript:

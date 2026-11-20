@@ -3,8 +3,8 @@ import json
 from pathlib import Path
 
 from .. import cache
-from ..planner import params_from_config, plan_clips
-from clip_engine.ai.transcript_matcher import has_target_match, parse_targets
+from ..planner import params_from_config, plan_clips, plan_time_ranges
+from clip_engine.ai.transcript_matcher import has_target_match, parse_targets, parse_time_ranges
 
 NAME = "plan"
 FILE_KEYS = ("clips_json",)
@@ -13,7 +13,7 @@ FILE_KEYS = ("clips_json",)
 def cache_inputs(ctx) -> dict:
     return {"segment": cache.sig(ctx.out["segment_json"]), "candidates": cache.sig(ctx.out["candidates_json"]),
             "params": json.loads(json.dumps(params_from_config(ctx.cfg))),
-            "moment_transcript": ctx.job["meta"].get("moment_transcript", ""), "v": 3}  # tuples -> lists
+            "moment_transcript": ctx.job["meta"].get("moment_transcript", ""), "v": 4}  # tuples -> lists
 
 
 def run(ctx, progress) -> dict:
@@ -22,9 +22,13 @@ def run(ctx, progress) -> dict:
     p = params_from_config(ctx.cfg)
     if ctx.job["meta"].get("live_trigger"):
         p["min_score"] = 0.0  # a live trigger already passed the monitor's own threshold
-    clips, rejected = plan_clips(cands, seg["words"], seg["sentences"], seg["starts"], seg["ends"], p, seg["duration"])
     transcript = ctx.job["meta"].get("moment_transcript", "").strip()
-    if transcript:
+    ranges = parse_time_ranges(transcript)
+    if ranges is not None:
+        clips, rejected = plan_time_ranges(ranges, seg["words"], seg["sentences"], seg["starts"], seg["ends"], p, seg["duration"])
+    else:
+        clips, rejected = plan_clips(cands, seg["words"], seg["sentences"], seg["starts"], seg["ends"], p, seg["duration"])
+    if transcript and ranges is None:
         kept = []
         for clip in clips:
             if has_target_match(clip.get("text", ""), transcript):

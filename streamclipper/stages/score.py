@@ -9,7 +9,7 @@ from ..signals import find_candidates, moment_curve
 from clip_engine.ai.transcript_analyzer import analyze_context, transcript_candidates
 from clip_engine.detectors.visual_detector import analyze_candidates as analyze_visual_candidates
 from clip_engine.intelligence.highlight_scorer import score_highlight
-from clip_engine.ai.transcript_matcher import find_matches
+from clip_engine.ai.transcript_matcher import find_matches, parse_time_ranges
 
 NAME = "score"
 FILE_KEYS = ("candidates_json",)
@@ -33,7 +33,7 @@ def cache_inputs(ctx) -> dict:
             "keywords": m["keywords"], "chat": cache.sig(chat) if chat and chat.is_file() else None,
             "intelligence": ctx.cfg["intelligence"],
             "moment_transcript": ctx.job["meta"].get("moment_transcript", ""),
-            "live": ctx.job["meta"].get("live_trigger"), "v": 5}
+            "live": ctx.job["meta"].get("live_trigger"), "v": 6}
 
 
 def run(ctx, progress) -> dict:
@@ -52,10 +52,21 @@ def run(ctx, progress) -> dict:
                                            ctx.cfg["moments"]["keywords"], chat)
         if provided_transcript:
             cands = []
-            for match in find_matches(seg["words"], provided_transcript):
-                cands.append({"t": match["t"], "strength": 0.9, "signals": {"speech": 0.9, "humor": 0.9},
-                              "delta_db": 0.0, "burst_end": match["end"], "source": "provided_transcript",
-                              "provided_match": match, "reasons": ["matched user-provided transcript"]})
+            ranges = parse_time_ranges(provided_transcript)
+            if ranges is not None:
+                for start, end in ranges:
+                    if end > duration:
+                        continue  # the planner will report that this requested range is past the source end
+                    cands.append({"t": round((start + end) / 2, 2), "strength": 0.9,
+                                  "signals": {"speech": 0.9, "humor": 0.9}, "delta_db": 0.0,
+                                  "burst_end": end, "source": "provided_time_range",
+                                  "provided_range": {"start": start, "end": end},
+                                  "reasons": ["user-provided timestamp range"]})
+            else:
+                for match in find_matches(seg["words"], provided_transcript):
+                    cands.append({"t": match["t"], "strength": 0.9, "signals": {"speech": 0.9, "humor": 0.9},
+                                  "delta_db": 0.0, "burst_end": match["end"], "source": "provided_transcript",
+                                  "provided_match": match, "reasons": ["matched user-provided transcript"]})
         else:
             cands = find_candidates(parts, curve, db01, delta, duration, ctx.cfg["moments"]["candidates_per_minute"])
             for speech_candidate in transcript_candidates(seg["sentences"], seg["words"],
@@ -72,9 +83,10 @@ def run(ctx, progress) -> dict:
             audio_score = min(100.0, max(0.0, float(live.get("delta_db", 0)) / 18 * 100)) if "loud" in reason else None
             chat_score = 100.0 if "chat" in reason else None
         else:
-            second = min(len(db01) - 1, max(0, int(candidate["t"]))) if len(db01) else 0
             audio_keys = ("energy", "nonspeech", "excite", "pause_beat", "laugh")
-            audio_score = max((float(parts[k][second]) for k in audio_keys), default=0.0) * 100 if parts and len(db01) else 0.0
+            audio_len = min((len(parts[k]) for k in audio_keys), default=0) if parts else 0
+            second = min(audio_len - 1, max(0, int(candidate["t"]))) if audio_len else 0
+            audio_score = max((float(parts[k][second]) for k in audio_keys), default=0.0) * 100 if audio_len else 0.0
             chat_score = (float(candidate["signals"].get("chat", 0.0)) * 100) if chat else None
         visual_info = visual[i] if i < len(visual) else {"available": False}
         signals = {"audio": audio_score,

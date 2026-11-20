@@ -134,7 +134,11 @@ class ClipWork:
         (self.dir / "captions.srt").write_text(self._srt(words), encoding="utf-8")
         verified = 0
         if visible_words:
-            verified = verify_render(self.cfg["tools"]["ffmpeg"], self.dir, probe_time(visible_words))
+            verification_time = probe_time(visible_words)
+            if verification_time is not None:
+                verified = verify_render(self.cfg["tools"]["ffmpeg"], self.dir, verification_time)
+            else:
+                log.info("Clip %s: transcript contains no glyphs supported by the caption renderer", self.clip["cid"])
         elif words and not captions_enabled:
             log.info("Clip %s: on-screen captions disabled", self.clip["cid"])
         else:

@@ -4,6 +4,45 @@ from __future__ import annotations
 import re
 from difflib import SequenceMatcher
 
+_RANGE_LIKE = re.compile(r"\d+:\d+\s*(?:-|–|—|to)\s*\d+:\d+", re.I)
+_RANGE = re.compile(r"^\s*[-*•]?\s*(\d+(?::\d+){1,2}(?:\.\d+)?)\s*(?:-|–|—|to)\s*(\d+(?::\d+){1,2}(?:\.\d+)?)\s*$", re.I)
+
+
+def _time_seconds(value: str) -> float | None:
+    parts = value.split(":")
+    try:
+        nums = [float(part) for part in parts]
+    except ValueError:
+        return None
+    if len(nums) == 2:
+        minutes, seconds = nums
+        if seconds >= 60:
+            return None
+        return minutes * 60 + seconds
+    if len(nums) == 3:
+        hours, minutes, seconds = nums
+        if minutes >= 60 or seconds >= 60:
+            return None
+        return hours * 3600 + minutes * 60 + seconds
+    return None
+
+
+def parse_time_ranges(text: str) -> list[tuple[float, float]] | None:
+    """Parse one explicit clip range per line; return None when the input is speech text."""
+    lines = [line.strip() for line in re.split(r"[\r\n]+", text or "") if line.strip()]
+    if not lines or not any(_RANGE_LIKE.search(line) for line in lines):
+        return None
+    ranges = []
+    for line in lines:
+        match = _RANGE.fullmatch(line)
+        if not match:
+            return None
+        start, end = (_time_seconds(value) for value in match.groups())
+        if start is None or end is None or end <= start:
+            return None
+        ranges.append((start, end))
+    return ranges
+
 
 def _tokens(text: str) -> list[str]:
     return re.findall(r"[\w']+", text.lower())
@@ -13,6 +52,8 @@ def parse_targets(text: str) -> list[str]:
     """Accept one target line per line; also split long lines at sentence punctuation."""
     out = []
     for line in re.split(r"[\r\n]+", text or ""):
+        if _RANGE_LIKE.search(line):
+            continue
         for part in re.split(r"(?<=[.!?])\s+", line.strip()):
             if len(_tokens(part)) >= 4:
                 out.append(part.strip())

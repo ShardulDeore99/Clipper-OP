@@ -81,7 +81,6 @@ layout = "auto"            # auto | single | two_speakers | gameplay_facecam | n
 face_sample_fps = 4        # face samples per second (on small frames), interpolated in between
 analysis_height = 360      # frames are shrunk to this height before face detection
 edge_margin_pct = 5        # faces stay at least this far inside the crop edges
-max_pan_per_second = 0.6   # crop window moves at most this fraction of its width per second
 facecam_style = "split"    # gaming preset: "split" (facecam 16:9 on top, game 16:9 below, blurred background),
                            # "stack" (tall gameplay on top, facecam below) or "corner" (rounded facecam box)
 # Normal videos: layout "fit_blur" puts the 16:9 video in the centre with blur above and below.
@@ -91,7 +90,7 @@ font = "Anton"             # looked up in assets/fonts and system fonts; falls b
 fallback_fonts = ["Impact", "Arial Black"]
 font_size = 92
 highlight_color = "lime"   # active word: "lime" or "yellow"
-words_per_caption = [2, 3]
+words_per_caption = [2, 5]
 max_lines = 2
 y_center = 1250            # caption centre (1080x1920 frame). Allowed band is about y 1000-1500
 glossary = "glossary.txt"  # "heard => written" fixes for names, game terms, slang

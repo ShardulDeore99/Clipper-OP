@@ -16,7 +16,7 @@ REQUIRED = {
     "clips": ["max_per_source", "min_seconds", "target_min_seconds", "target_max_seconds", "max_seconds",
               "lead_in_seconds", "tail_out_seconds", "hook_text"],
     "moments": ["min_score", "candidates_per_minute", "pause_seconds", "pause_boundary", "keywords", "hook_words"],
-    "framing": ["layout", "face_sample_fps", "analysis_height", "edge_margin_pct", "max_pan_per_second", "facecam_style"],
+    "framing": ["layout", "face_sample_fps", "analysis_height", "edge_margin_pct", "facecam_style"],
     "captions": ["font", "fallback_fonts", "font_size", "highlight_color", "words_per_caption", "max_lines", "y_center", "glossary"],
     "render": ["review_encoder", "review_crf", "export_crf", "export_size", "export_fps", "target_lufs",
                "max_parallel_renders", "overlays"],
@@ -79,6 +79,7 @@ STYLE_CHOICES = {
     "facecam_style": ("split", "stack", "corner"),
     "caption_pos": ("upper", "middle", "lower"),
     "caption_look": ("outline", "box"),
+    "caption_theme": ("funny", "hype", "rage", "fail", "scary", "wholesome", "neutral"),
     "caption_size": ("small", "medium", "large"),
     "caption_mode": ("on", "off"),
 }
@@ -90,6 +91,12 @@ def clean_style(style: dict | None) -> dict:
     """Keep only known keys with known values; an empty/unknown value means 'use config.toml'."""
     out = {}
     for k, v in (style or {}).items():
+        if k in ("caption_x", "caption_y"):
+            limit = 1080 if k == "caption_x" else 1920
+            if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 <= v <= limit:
+                raise ConfigError(f"{k} must be a number between 0 and {limit}")
+            out[k] = round(v)
+            continue
         if k not in STYLE_CHOICES or v in (None, "", "default"):
             continue
         if v not in STYLE_CHOICES[k]:
@@ -111,10 +118,18 @@ def job_cfg(cfg: "Config", job: dict | None) -> "Config":
         d["framing"]["facecam_style"] = style["facecam_style"]
     if "caption_pos" in style:
         d["captions"]["y_center"] = CAPTION_Y[style["caption_pos"]]
+    if "caption_x" in style:
+        d["captions"]["x_center"] = style["caption_x"]
+    if "caption_y" in style:
+        d["captions"]["y_center"] = style["caption_y"]
+    if "caption_x" in style or "caption_y" in style:
+        d["captions"]["position_locked"] = True
     if "caption_size" in style:
         d["captions"]["font_size"] = CAPTION_PX[style["caption_size"]]
     if "caption_look" in style:
         d["captions"]["look"] = style["caption_look"]
+    if "caption_theme" in style:
+        d["captions"]["highlight_color"] = style["caption_theme"]
     if style.get("caption_mode") == "off":
         d["captions"]["enabled"] = False
     return Config(d, cfg.path)

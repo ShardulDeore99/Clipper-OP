@@ -1,7 +1,7 @@
-"""M4: layout choice, face tracking, smoothed crop paths, and the ffmpeg filter for each layout.
+"""M4: layout choice, stable face-anchored crops, and the ffmpeg filter for each layout.
 
-Never a blind centre crop: faces are tracked on small frames (sampled, then interpolated), the crop
-window is smoothed (one-euro) with a pan-speed limit, and faces stay >= edge_margin inside the edges.
+Single-speaker crops use one representative face position for the whole clip. A fixed crop avoids
+camera shake caused by small face-detector changes between sampled frames.
 """
 import math
 
@@ -92,7 +92,7 @@ def _simplify(points, tol=2.0):
 
 
 def track_single(faces, times, resets, W, H, cfg_f, dt):
-    """Smoothed crop window (left, top) per sample for a 9:16 crop that keeps the face with headroom."""
+    """Build a fixed 9:16 crop around the median detected face position for the whole clip."""
     prim, last = [], None
     for f in faces:
         if not f:
@@ -111,33 +111,21 @@ def track_single(faces, times, resets, W, H, cfg_f, dt):
     ch = min(1.0, max(0.6, fh_med / 0.30, fh_hi / 0.55))
     ch_px = _even(ch * H)
     cw_px = min(_even(ch_px * 9 / 16), W // 2 * 2)
-    cxs = _interp([(b[0] + b[2]) / 2 if b else None for b in prim]) or [0.5] * n
-    cys = _interp([(b[1] + b[3]) / 2 if b else None for b in prim]) or [0.4] * n
-    cxs = one_euro(cxs, dt, resets=resets)
-    cys = one_euro(cys, dt, resets=resets)
-    cxs = limit_pan(cxs, dt, cfg_f["max_pan_per_second"] * cw_px / W, resets)
-    left = [min(max(cx * W - cw_px / 2, 0), W - cw_px) for cx in cxs]
-    top = [min(max(cy * H - 0.38 * ch_px, 0), H - ch_px) for cy in cys]
+    detected = [b for b in prim if b]
+    cx = float(np.median([(b[0] + b[2]) / 2 for b in detected])) if detected else 0.5
+    cy = float(np.median([(b[1] + b[3]) / 2 for b in detected])) if detected else 0.4
+    left = min(max(cx * W - cw_px / 2, 0), W - cw_px)
+    top = min(max(cy * H - 0.38 * ch_px, 0), H - ch_px)
     m = cfg_f["edge_margin_pct"] / 100.0
     bad = 0
     face_i = [i for i, b in enumerate(prim) if b]
-    for i in face_i:  # enforce: the whole face stays >= margin inside the crop
+    for i in face_i:  # report how often a moving face falls outside this stable crop
         x0, y0, x1, y1 = prim[i][0] * W, prim[i][1] * H, prim[i][2] * W, prim[i][3] * H
         mx, my = m * cw_px, m * ch_px
-        if x0 < left[i] + mx:
-            left[i] = x0 - mx
-        if x1 > left[i] + cw_px - mx:
-            left[i] = x1 - cw_px + mx
-        if y0 < top[i] + my:
-            top[i] = y0 - my
-        if y1 > top[i] + ch_px - my:
-            top[i] = y1 - ch_px + my
-        left[i] = min(max(left[i], 0), W - cw_px)
-        top[i] = min(max(top[i], 0), H - ch_px)
-        inside = (x0 >= left[i] + mx - 1 and x1 <= left[i] + cw_px - mx + 1 and y0 >= top[i] + my - 1
-                  and y1 <= top[i] + ch_px - my + 1)
+        inside = (x0 >= left + mx - 1 and x1 <= left + cw_px - mx + 1 and y0 >= top + my - 1
+                  and y1 <= top + ch_px - my + 1)
         bad += 0 if inside else 1
-    path = _simplify([[round(t, 2), round(l, 1), round(tp, 1)] for t, l, tp in zip(times, left, top)])
+    path = [[round(times[0], 2), round(left, 1), round(top, 1)]] if times else [[0.0, round(left, 1), round(top, 1)]]
     return {"cw": cw_px, "ch": ch_px, "path": path, "violations": round(bad / max(len(face_i), 1), 3)}, prim
 
 

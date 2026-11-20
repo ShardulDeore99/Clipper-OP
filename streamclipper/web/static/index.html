@@ -57,13 +57,19 @@
   .dlg-foot label.remember { display: flex; flex-direction: row; align-items: center; gap: 8px; font-size: .9rem; color: var(--ink); }
   .dlg-foot input[type=checkbox] { width: 18px; height: 18px; padding: 0; }
   .pv-wrap { display: grid; justify-items: center; align-content: start; gap: 8px; font-size: .8rem; color: var(--muted); text-align: center; }
-  .phone { width: 180px; height: 320px; position: relative; overflow: hidden; border-radius: 16px; border: 2px solid var(--ink); background: #3c505c; }
+  .phone { width: 180px; height: 320px; position: relative; overflow: hidden; border-radius: 16px; border: 2px solid var(--ink); background: #3c505c; touch-action: none; }
+  .phone .guide { position:absolute; z-index:2; pointer-events:none; opacity:0; border-color:rgba(197,255,74,.9); }
+  .phone .guide-v { top:0; bottom:0; left:50%; border-left:1px dashed; }
+  .phone .guide-h { left:0; right:0; top:50%; border-top:1px dashed; }
+  .phone.dragging .guide { opacity:1; }
   .phone .blk { position: absolute; left: 0; right: 0; display: grid; place-items: center; color: #fff; font-size: .8rem; font-weight: 600; }
-  .phone .cap { position: absolute; left: 0; right: 0; display: flex; justify-content: center; font-family: Impact, "Arial Black", sans-serif; font-weight: 700; letter-spacing: .5px; color: #fff; }
+  .phone .cap { position: absolute; z-index:3; display: flex; justify-content: center; width:max-content; max-width:calc(100% - 12px); transform:translate(-50%,-50%); font-family: Impact, "Arial Black", sans-serif; font-weight: 700; letter-spacing: .5px; line-height:1.1; color: #fff; cursor: grab; touch-action:none; user-select:none; white-space:normal; text-align:center; }
+  .phone .cap:active { cursor:grabbing; }
   .phone .cap span { padding: 2px 8px; }
   .phone .cap.box span { background: #101010; }
   .phone .cap.outline span { text-shadow: -1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000, 0 2px 0 #000; }
-  .phone .cap b { color: #39ff14; font-weight: 700; }
+  .phone .cap b { color: var(--caption-highlight, #ffe600); font-weight: 900; }
+  .phone .cap .accent { color: var(--caption-accent, #fff); font-weight: 900; }
   form { display: grid; grid-template-columns: 1fr auto auto auto; gap: 10px; align-items: end; }
   label { display: grid; gap: 4px; font-size: .85rem; color: var(--muted); }
   input, select, button { font: inherit; border-radius: 10px; border: 1.5px solid var(--line); padding: 11px 13px; background: #fff; color: var(--ink); }
@@ -153,8 +159,11 @@
   .mon .ev { color: var(--muted); font-family: var(--mono); font-size: .8rem; }
   .src-head { margin: 22px 0 8px; font-weight: 600; }
   .folder-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:12px; }
-  .project-folder { width:100%; text-align:left; display:grid; grid-template-columns:56px 1fr auto; gap:14px; align-items:center; padding:16px; margin:0; background:#fffefa; border:1.5px solid var(--ink); border-radius:16px; box-shadow:4px 4px 0 #e4e0d5; }
+  .project-folder { width:100%; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; align-items:center; padding:12px 14px; margin:0; background:#fffefa; border:1.5px solid var(--ink); border-radius:16px; box-shadow:4px 4px 0 #e4e0d5; }
   .project-folder:hover { border-color:var(--violet); transform:translateY(-1px); }
+  .folder-open { width:100%; min-width:0; display:grid; grid-template-columns:56px minmax(0,1fr) auto; gap:14px; align-items:center; padding:4px 0; border:0; border-radius:8px; background:transparent; color:var(--ink); text-align:left; box-shadow:none; }
+  .folder-open:hover { border-color:transparent; transform:none; }
+  .folder-remove { padding:8px 11px; font-size:.82rem; white-space:nowrap; }
   .folder-icon { width:52px; height:42px; border-radius:7px 9px 9px 9px; display:grid; place-items:center; background:#eae6ff; color:#5842d0; font-size:1.3rem; position:relative; }
   .folder-icon::before { content:""; position:absolute; height:5px; width:21px; top:-4px; left:4px; background:#eae6ff; border-radius:4px 4px 0 0; }
   .folder-copy { min-width:0; }
@@ -199,9 +208,9 @@
     <h2>Paste a video link</h2>
     <p class="lede">A YouTube link, any video link, or a file path from this computer. After you press Continue, a window asks how the clips should look.</p>
     <div class="transcript-entry" id="transcript-entry" hidden>
-      <label for="moment-transcript">Funny moment transcript</label>
-      <textarea id="moment-transcript" placeholder="Paste the exact spoken lines you want clipped. Use one moment per line."></textarea>
-      <p class="notice">We’ll match these lines against Whisper’s transcript and only plan clips that contain a match. Use the words spoken in the video.</p>
+      <label for="moment-transcript">Moments to clip</label>
+      <textarea id="moment-transcript" placeholder="Paste one time range (0:14-0:38) or exact spoken line per line."></textarea>
+      <p class="notice">Timestamp ranges keep your exact in and out points. Spoken lines are matched against Whisper’s transcript.</p>
     </div>
     <form id="add">
       <label>Link or file path
@@ -265,10 +274,11 @@
         <label>Gaming style<select id="look-facecam_style"></select></label>
         <label>Caption position<select id="look-caption_pos"></select></label>
         <label>Caption look<select id="look-caption_look"></select></label>
+        <label>Caption theme<select id="look-caption_theme"></select></label>
         <label>Caption size<select id="look-caption_size"></select></label>
         <label>On-screen captions<select id="look-caption_mode"></select></label>
       </div>
-      <div class="pv-wrap"><strong>Preview</strong><div class="phone" id="pv" aria-hidden="true"></div><span id="pv-note">Example frame</span></div>
+      <div class="pv-wrap"><strong>Preview · drag caption</strong><div class="phone" id="pv" aria-hidden="true"></div><span id="pv-note">Example frame</span><span>Center guides appear while dragging.</span></div>
     </div>
     <p class="msg" id="look-msg" role="alert"></p>
     <div class="dlg-foot">
@@ -420,6 +430,16 @@ async function act(id, method, suffix) {
   refresh();
 }
 
+async function removeProject(id, name) {
+  if (!confirm(`Remove “${name}” and all of its clips from Sources?`)) return;
+  try {
+    await api(`/api/jobs/${id}`, { method: "DELETE" });
+    await Promise.all([refresh(), loadClips(true)]);
+  } catch (e) {
+    $("#clip-msg").textContent = e.message;
+  }
+}
+
 async function refresh() {
   try {
     const box = $("#jobs");
@@ -486,10 +506,15 @@ const LOOK = {
   facecam_style: { split: "Split: facecam top, game below", stack: "Stack: tall game, facecam below", corner: "Corner facecam box" },
   caption_pos: { upper: "Upper", middle: "Middle", lower: "Lower" },
   caption_look: { outline: "Outline", box: "Dark box (easier to read)" },
+  caption_theme: { funny: "Funny · yellow", hype: "Hype · green", rage: "Rage · red", fail: "Fail · orange", scary: "Scary · cyan", wholesome: "Wholesome · pink", neutral: "Neutral · yellow" },
   caption_size: { small: "Small", medium: "Medium", large: "Large" },
   caption_mode: { on: "On", off: "Off" },
 };
-const lookBody = () => Object.fromEntries(Object.keys(LOOK).map((k) => [k, $(`#look-${k}`).value]));
+let customCaptionPosition = null;
+const lookBody = () => ({
+  ...Object.fromEntries(Object.keys(LOOK).map((k) => [k, $(`#look-${k}`).value])),
+  ...(customCaptionPosition || {}),
+});
 const lookSave = () => { try { localStorage.setItem("sc-look", JSON.stringify(lookBody())); } catch (e) {} };
 
 // ---- tabs ----
@@ -514,13 +539,23 @@ for (const t of TABS) {
 }
 
 // ---- clip look popup ----
-const lookText = () => Object.keys(LOOK).map((k) => { const s = $(`#look-${k}`); return s.value ? s.selectedOptions[0].textContent : null; }).filter(Boolean);
+const lookText = () => [
+  ...Object.keys(LOOK).map((k) => { const s = $(`#look-${k}`); return s.value ? s.selectedOptions[0].textContent : null; }).filter(Boolean),
+  ...(customCaptionPosition ? ["Custom caption position"] : []),
+];
 const refreshSummary = () => { const t = lookText(); $("#look-summary").textContent = "Look: " + (t.length ? t.join(", ") : "all defaults"); };
 
 function renderPreview() {
   const v = lookBody(), layout = v.layout || "auto", style = v.facecam_style || "split";
+  const captionPalettes = {
+    funny: ["#FFE600", "#FF2D2D"], hype: ["#00FF66", "#FFE600"], rage: ["#FF2D2D", "#FFE600"],
+    fail: ["#FF8A00", "#00E5FF"], scary: ["#00E5FF", "#FF2D2D"],
+    wholesome: ["#FF7AC8", "#FFFFFF"], neutral: ["#FFE600", "#FFFFFF"],
+  };
   const px = { small: 12, medium: 15, large: 19 }[v.caption_size || "medium"];
-  const cy = { upper: 177, middle: 208, lower: 237 }[v.caption_pos || "middle"];
+  const presetY = { upper: 175, middle: 204, lower: 232 }[v.caption_pos || "middle"];
+  const previewX = customCaptionPosition ? customCaptionPosition.caption_x / 6 : 90;
+  const previewY = customCaptionPosition ? customCaptionPosition.caption_y / 6 : presetY;
   const blk = (top, h, bg, text) => el("div", { class: "blk", style: `top:${top}px;height:${h}px;background:${bg}` }, text);
   const auto = layout === "auto" ? "Auto picks per clip; gaming shown" : null;
   const parts = [];
@@ -531,11 +566,39 @@ function renderPreview() {
   else if (style === "stack") { parts.push(blk(0, 210, "#5b4bb7", "Gameplay"), blk(210, 110, "#0f5c6e", "Facecam")); note = auto || "Gaming: game on top, facecam below"; }
   else if (style === "corner") { parts.push(blk(0, 320, "#5b4bb7", "Gameplay"), el("div", { class: "blk", style: "top:14px;left:10px;right:auto;width:70px;height:44px;border-radius:10px;background:#0f5c6e" }, "Cam")); note = auto || "Gaming: small facecam box"; }
   else { parts.push(blk(58, 101, "#0f5c6e", "Facecam"), blk(159, 101, "#5b4bb7", "Gameplay")); note = auto || "Gaming: facecam top, game below"; }
+  parts.push(el("div", { class: "guide guide-v" }), el("div", { class: "guide guide-h" }));
   if ((v.caption_mode || "on") !== "off") {
-    parts.push(el("div", { class: "cap " + (v.caption_look || "outline"), style: `top:${cy - px}px;font-size:${px}px` }, el("span", {}, "NO ", el("b", {}, "WAY"), " BRO")));
+    const [highlight, accent] = captionPalettes[v.caption_theme] || captionPalettes.funny;
+    parts.push(el("div", { class: "cap " + (v.caption_look || "outline"), style: `left:${previewX}px;top:${previewY}px;font-size:${px}px;--caption-highlight:${highlight};--caption-accent:${accent}` }, el("span", {}, "NO ", el("b", {}, "WAY"), " THAT WAS ", el("span", { class: "accent" }, "CRAZY"))));
   }
   $("#pv").replaceChildren(...parts);
   $("#pv-note").textContent = note;
+  const phone = $("#pv"), caption = phone.querySelector(".cap");
+  if (caption) {
+    caption.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      phone.classList.add("dragging");
+      caption.setPointerCapture(event.pointerId);
+    });
+    caption.addEventListener("pointermove", (event) => {
+      if (!caption.hasPointerCapture(event.pointerId)) return;
+      const rect = phone.getBoundingClientRect();
+      let x = Math.max(10, Math.min(rect.width - 10, event.clientX - rect.left));
+      let y = Math.max(10, Math.min(rect.height - 10, event.clientY - rect.top));
+      if (Math.abs(x - rect.width / 2) < 8) x = rect.width / 2;
+      if (Math.abs(y - rect.height / 2) < 8) y = rect.height / 2;
+      caption.style.left = `${x}px`;
+      caption.style.top = `${y}px`;
+      customCaptionPosition = { caption_x: Math.round(x / rect.width * 1080), caption_y: Math.round(y / rect.height * 1920) };
+      refreshSummary();
+    });
+    const finishDrag = (event) => {
+      if (caption.hasPointerCapture(event.pointerId)) caption.releasePointerCapture(event.pointerId);
+      phone.classList.remove("dragging");
+    };
+    caption.addEventListener("pointerup", finishDrag);
+    caption.addEventListener("pointercancel", finishDrag);
+  }
 }
 
 let lookGo = null;
@@ -548,6 +611,7 @@ function openLook({ forText, goLabel, go }) {
   $("#look-dialog").showModal();
 }
 for (const k of Object.keys(LOOK)) $(`#look-${k}`).addEventListener("change", renderPreview);
+$("#look-caption_pos").addEventListener("change", () => { customCaptionPosition = null; renderPreview(); refreshSummary(); });
 const closeLook = () => { if ($("#look-dialog").open) $("#look-dialog").close(); refreshSummary(); };
 $("#look-x").addEventListener("click", closeLook);
 $("#look-cancel").addEventListener("click", closeLook);
@@ -712,10 +776,14 @@ async function loadClips(force) {
       const folders = filteredJobs.map((job) => {
         const projectClips = byJob.get(job.id) || [];
         const name = job.title || job.source || `Project ${job.id}`;
-        return el("button", { class: "project-folder", type: "button", onclick: () => { location.href = `/sources/${job.id}`; } },
-          el("span", { class: "folder-icon", "aria-hidden": "true" }, "▰"),
-          el("span", { class: "folder-copy" }, el("strong", {}, name), el("small", {}, job.source || "Source unavailable")),
-          el("span", { class: "folder-count" }, `${projectClips.length} clip${projectClips.length === 1 ? "" : "s"} · ${job.status}`));
+        return el("div", { class: "project-folder" },
+          el("button", { class: "folder-open", type: "button", onclick: () => { location.href = `/sources/${job.id}`; } },
+            el("span", { class: "folder-icon", "aria-hidden": "true" }, "▰"),
+            el("span", { class: "folder-copy" }, el("strong", {}, name), el("small", {}, job.source || "Source unavailable")),
+            el("span", { class: "folder-count" }, `${projectClips.length} clip${projectClips.length === 1 ? "" : "s"} · ${job.status}`)),
+          el("button", { class: "quiet folder-remove", type: "button", disabled: ["queued", "running"].includes(job.status) ? "" : null,
+            title: ["queued", "running"].includes(job.status) ? "Wait for this project to finish before removing it" : "Remove project from Sources",
+            "aria-label": `Remove ${name} from Sources`, onclick: () => removeProject(job.id, name) }, "Remove"));
       });
       box.replaceChildren(...(folders.length ? [el("div", { class: "folder-list" }, folders)]
         : [el("div", { class: "empty" }, query ? "No projects match that search." : "No projects yet. Add a video or link above; each project will appear here.")]));
@@ -797,10 +865,14 @@ $("#live").addEventListener("submit", (ev) => {
     el("option", { value: l, ...(l === meta.default_language ? { selected: "" } : {}) }, langNames[l] || l)));
   let saved = {};
   try { saved = JSON.parse(localStorage.getItem("sc-look") || "{}"); } catch (e) {}
+  if (Number.isFinite(saved.caption_x) && Number.isFinite(saved.caption_y)) {
+    customCaptionPosition = { caption_x: saved.caption_x, caption_y: saved.caption_y };
+  }
   for (const [k, names] of Object.entries(LOOK)) {
     const sel = $(`#look-${k}`);
+    const values = meta.style_choices?.[k] || Object.keys(names);
     sel.replaceChildren(el("option", { value: "" }, "Default"),
-      ...(meta.style_choices[k] || []).map((v) => el("option", { value: v }, names[v] || v)));
+      ...values.map((v) => el("option", { value: v }, names[v] || v)));
     sel.value = saved[k] || "";
   }
   refreshSummary();

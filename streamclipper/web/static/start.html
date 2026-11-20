@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#101016">
+<title>Choose your clipping method — FragBytez</title>
+<style>
+  :root { color-scheme:dark; --bg:#101016; --panel:#191923; --ink:#f7f5ff; --muted:#aaa6b8; --lime:#c5ff4a; --purple:#8e78ff; --pink:#ff75bd; --line:#353241; --sans:Inter,"Segoe UI",system-ui,sans-serif; }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; color:var(--ink); background:radial-gradient(ellipse at 50% 0%,#27213d 0,transparent 52%),var(--bg); font:16px/1.55 var(--sans); }
+  a { color:inherit; text-decoration:none; }
+  .shell { min-height:100vh; display:flex; flex-direction:column; }
+  header { width:min(1160px,calc(100% - 44px)); margin:auto; height:78px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #ffffff12; }
+  .brand { display:flex; align-items:center; gap:10px; font-weight:950; letter-spacing:-.05em; }
+  .mark { width:35px; height:35px; display:grid; place-items:center; background:var(--lime); color:#111; border-radius:11px 11px 11px 4px; transform:rotate(-4deg); box-shadow:3px 3px 0 var(--purple); }
+  .back { color:#bbb7c5; font-size:.9rem; }
+  .back:hover { color:var(--lime); }
+  main { width:min(1080px,calc(100% - 36px)); margin:auto; flex:1; display:flex; flex-direction:column; justify-content:center; padding:60px 0 74px; }
+  .intro { text-align:center; max-width:700px; margin:0 auto 36px; }
+  .eyebrow { display:inline-block; color:var(--lime); font-size:.76rem; letter-spacing:.15em; font-weight:850; text-transform:uppercase; }
+  h1 { margin:12px 0 12px; font-size:clamp(2.5rem,6vw,4.5rem); line-height:1.02; letter-spacing:-.07em; }
+  .intro p { color:var(--muted); font-size:1.06rem; margin:0; }
+  .choices { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  .choice { min-height:370px; border:1px solid var(--line); border-radius:22px; padding:28px; background:linear-gradient(150deg,#201f2b,#17171f 66%); display:flex; flex-direction:column; position:relative; overflow:hidden; transition:transform .18s,border-color .18s,box-shadow .18s; }
+  .choice:hover,.choice:focus-visible { transform:translateY(-4px); border-color:var(--lime); box-shadow:0 15px 50px #0006,5px 5px 0 #8e78ff; outline:none; }
+  .choice.transcript { background:linear-gradient(145deg,#28223b,#191820 68%); }
+  .step { color:#aaa6b8; font:700 .78rem var(--sans); letter-spacing:.1em; text-transform:uppercase; }
+  .illustration { height:100px; display:flex; align-items:center; gap:5px; margin:20px 0 12px; }
+  .bar { width:8px; height:var(--h); border-radius:10px; background:var(--lime); opacity:.9; }
+  .transcript .bar { background:var(--pink); }
+  .line-icon { width:58px; height:58px; border-radius:17px; display:grid; place-items:center; background:#2d2a3c; color:var(--lime); font-size:1.7rem; margin-right:16px; }
+  .transcript .line-icon { color:var(--pink); background:#38283b; }
+  h2 { font-size:1.7rem; letter-spacing:-.045em; margin:0 0 8px; }
+  .desc { color:#b8b4c1; margin:0 0 20px; max-width:430px; }
+  .detail { display:grid; gap:8px; color:#d6d2df; font-size:.9rem; margin:0 0 24px; }
+  .detail span::before { content:"✓"; color:var(--lime); font-weight:900; margin-right:9px; }
+  .transcript .detail span::before { color:var(--pink); }
+  .go { margin-top:auto; display:flex; justify-content:space-between; align-items:center; min-height:50px; border-radius:12px; padding:0 16px; background:var(--lime); color:#151515; font-weight:900; }
+  .transcript .go { background:var(--pink); }
+  .go span { font-size:1.2rem; }
+  .privacy { text-align:center; color:#817d8d; font-size:.8rem; margin:22px 0 0; }
+  footer { width:min(1160px,calc(100% - 44px)); margin:auto; padding:20px 0 28px; border-top:1px solid #ffffff12; color:#858190; font-size:.8rem; display:flex; justify-content:space-between; gap:20px; }
+  @media(max-width:700px) { .choices{grid-template-columns:1fr}.choice{min-height:335px;padding:23px}.intro{margin-bottom:26px}main{padding-top:44px}.choices{gap:14px} }
+  @media(prefers-reduced-motion:reduce) { .choice{transition:none} }
+</style>
+<link rel="stylesheet" href="/static/theme.css">
+</head>
+<body class="start-page">
+<div class="shell">
+  <header>
+    <a class="brand" href="/" aria-label="FragBytez home"><span class="mark" aria-hidden="true">▶</span><span>FRAGBYTEZ</span></a>
+    <a class="back" href="/">← Back to home</a>
+  </header>
+  <main>
+    <div class="intro"><span class="eyebrow">STEP 1 · CHOOSE YOUR WORKFLOW</span><h1>How do you want<br>to find moments?</h1><p>Pick the way you want FragBytez to select clips. You can review and trim every result in the studio.</p></div>
+    <div class="choices">
+      <a class="choice automatic" href="/app?selection=automatic">
+        <span class="step">Option 01 · Automatic</span>
+        <div class="illustration" aria-hidden="true"><span class="line-icon">⌁</span><i class="bar" style="--h:22px"></i><i class="bar" style="--h:38px"></i><i class="bar" style="--h:28px"></i><i class="bar" style="--h:62px"></i><i class="bar" style="--h:35px"></i><i class="bar" style="--h:76px"></i><i class="bar" style="--h:43px"></i><i class="bar" style="--h:29px"></i><i class="bar" style="--h:53px"></i><i class="bar" style="--h:32px"></i><i class="bar" style="--h:20px"></i></div>
+        <h2>Link only</h2><p class="desc">Add a video link or local file and let the system surface moments automatically.</p>
+        <div class="detail"><span>Audio and transcript signals</span><span>Automatic moment selection</span><span>Review clips before export</span></div>
+        <div class="go">Continue with link only <span aria-hidden="true">→</span></div>
+      </a>
+      <a class="choice transcript" href="/app?selection=transcript">
+        <span class="step">Option 02 · Transcript-guided</span>
+        <div class="illustration" aria-hidden="true"><span class="line-icon">≡</span><i class="bar" style="--h:27px"></i><i class="bar" style="--h:48px"></i><i class="bar" style="--h:34px"></i><i class="bar" style="--h:69px"></i><i class="bar" style="--h:42px"></i><i class="bar" style="--h:78px"></i><i class="bar" style="--h:37px"></i><i class="bar" style="--h:59px"></i><i class="bar" style="--h:30px"></i></div>
+        <h2>Link + funny moment transcript</h2><p class="desc">Add a video link and exact spoken lines. Only clips containing a transcript match are planned.</p>
+        <div class="detail"><span>Paste one moment per line</span><span>Lines matched to Whisper timestamps</span><span>Unmatched moments are left out</span></div>
+        <div class="go">Continue with transcript <span aria-hidden="true">→</span></div>
+      </a>
+    </div>
+    <p class="privacy">Use recordings and streams you have permission to process.</p>
+  </main>
+  <footer><span>© FragBytez</span><span>Every clip is ready for your review before download.</span></footer>
+</div>
+</body>
+</html>

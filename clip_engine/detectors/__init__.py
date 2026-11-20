@@ -1,0 +1,1 @@
+"""Independent media signal detectors."""

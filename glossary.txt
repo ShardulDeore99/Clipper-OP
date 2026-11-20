@@ -1,0 +1,4 @@
+# Names, game terms and slang to fix in captions (used from M5).
+# Format: heard => written     (one per line)
+# Example:
+# steem => Steam

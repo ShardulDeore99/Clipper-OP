@@ -1,0 +1,11 @@
+# Pinned from my own knowledge; I could not reach PyPI to verify. If a pin fails to
+# resolve, setup stops loudly: bump that line. yt-dlp is the exception: keep it fresh with
+#   python -m streamclipper update-ytdlp
+fastapi==0.115.6
+uvicorn==0.34.0
+yt-dlp[default]>=2026.08.19  # a floor, not a pin: YouTube breaks old versions within weeks
+faster-whisper==1.1.1
+numpy>=1.26
+opencv-python-headless==4.10.0.84
+websockets>=12,<16
+cryptography>=42

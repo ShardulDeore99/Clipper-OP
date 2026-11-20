@@ -1,0 +1,109 @@
+:root {
+  color-scheme: dark;
+  --bg: #101016;
+  --panel: #191923;
+  --ink: #f7f5ff;
+  --muted: #aaa6b8;
+  --line: #302e3c;
+  --lime: #c5ff4a;
+  --purple: #8e78ff;
+  --pink: #ff75bd;
+  --fail: #ff6c83;
+  --cyan: #55d8d0;
+  --paper: var(--bg);
+  --done: var(--purple);
+  --run: #ffd25b;
+  --later: #716c7c;
+  --violet: var(--purple);
+  --sans: Inter, "Segoe UI", system-ui, sans-serif;
+  --mono: "Cascadia Mono", Consolas, monospace;
+}
+
+body { color: var(--ink); background-color: var(--bg); font-family: var(--sans); }
+button, input, select, textarea { color: var(--ink); background: #22212c; border-color: var(--line); }
+input::placeholder, textarea::placeholder { color: #817d8d; }
+button.primary, a.btn.primary { color: #141414; background: var(--lime); border-color: var(--lime); box-shadow: 4px 4px 0 var(--purple); }
+button.primary:hover, a.btn.primary:hover { transform: translate(-2px,-2px); box-shadow: 6px 6px 0 var(--purple); }
+a.btn { color: var(--ink); background: #252330; border-color: #403d4b; }
+a.btn:hover, button:not(.primary):hover { border-color: var(--purple); }
+
+/* Home and workflow pages use this same wordmark and accent palette. */
+.studio .brand-mark, .profile-page .mark {
+  width: 36px; height: 36px; display: grid; place-items: center; color: #111;
+  background: var(--lime); border: 0; border-radius: 11px 11px 11px 4px;
+  transform: rotate(-4deg); box-shadow: 3px 3px 0 var(--purple); font-size: 1rem;
+}
+.studio .brand-row h1 { font-size: 1.15rem; font-weight: 950; letter-spacing: -.055em; text-transform: uppercase; }
+.studio .brand-row h1::after { display: none; }
+.studio .brand-row { margin-bottom: 10px; }
+.studio .brand-row .profile-link { margin-left: auto; }
+.studio .tabs { background: var(--panel); border: 1px solid var(--line); }
+.studio .tabs button { color: #d3d0dc; }
+.studio .tabs button:hover { color: var(--ink); background: #282535; }
+.studio .tabs button[aria-selected="true"] { color: #111; background: var(--lime); box-shadow: 3px 3px 0 var(--purple); }
+.studio .lookchip, .studio .analysis-stat { color: var(--ink); background: #282535; border-color: #403d4b; }
+.studio .job, .studio .clip, .studio .mon, .studio .analysis, .studio .project-folder {
+  color: var(--ink); background: var(--panel); border-color: var(--line); box-shadow: 5px 5px 0 #08080d;
+}
+.studio .project-folder:hover { border-color: var(--lime); }
+.studio .folder-icon, .studio .folder-icon::before { color: var(--lime); background: #282535; }
+.studio .folder-copy small, .studio .folder-count, .studio .src, .studio .facts,
+.studio .analysis small, .studio .chart-empty, .studio .notice { color: var(--muted); }
+.studio .chip { color: var(--ink); border-color: var(--line); background: #22212c; }
+.studio .chip.done { color: #141414; background: var(--lime); border-color: var(--lime); }
+.studio .chip.running { color: #141414; background: var(--run); border-color: var(--run); }
+.studio .chip.failed { color: #fff; background: var(--fail); border-color: var(--fail); }
+.studio .bar { background: #22212c; border-color: var(--line); }
+.studio .seg.done .bar { background: var(--purple); border-color: var(--purple); }
+.studio .seg.failed .bar { background: var(--fail); border-color: var(--fail); }
+.studio .seg b { color: var(--ink); }
+.studio .error, .studio .flag.error { color: #ffdce3; background: #321d29; border-color: var(--fail); }
+.studio .flag, .studio .empty { color: var(--muted); background: #1d1c26; border-color: var(--line); }
+.studio .flag.warn { color: #ffe9a8; background: #30291c; border-color: var(--run); }
+.studio .project-folder .folder-count { color: var(--muted); }
+.studio main { width: min(1160px, calc(100% - 44px)); max-width: 1160px; padding-top: 38px; }
+body.studio { background-image: radial-gradient(circle at 8% 4%, rgba(197,255,74,.08), transparent 22rem), radial-gradient(circle at 92% 10%, rgba(142,120,255,.12), transparent 24rem); }
+
+/* Start chooser shares the home-page palette and surface language. */
+.start-page {
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(142,120,255,.18), transparent 52%),
+    var(--bg);
+}
+.start-page .choice {
+  background: var(--panel);
+  border-color: var(--line);
+  box-shadow: none;
+}
+.start-page .choice:hover,
+.start-page .choice:focus-visible {
+  border-color: var(--lime);
+  box-shadow: 5px 5px 0 var(--purple);
+}
+.start-page .choice.transcript {
+  background: linear-gradient(145deg, #28223b, var(--panel) 68%);
+}
+.start-page .go { background: var(--lime); }
+.start-page .transcript .go { background: var(--pink); }
+
+.profile-page { min-height: 100vh; padding: 34px 18px; color: var(--ink); background: radial-gradient(circle at 8% 4%,rgba(197,255,74,.08),transparent 22rem),radial-gradient(circle at 92% 10%,rgba(142,120,255,.16),transparent 24rem),var(--bg); }
+.profile-page main { max-width: 760px; margin: auto; }
+.profile-page header { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 32px; }
+.profile-page .brand { display: flex; align-items: center; gap: 11px; color: var(--ink); font-size: 1.15rem; font-weight: 950; letter-spacing: -.055em; text-decoration: none; }
+.profile-page .card { padding: 26px; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 20px; box-shadow: 6px 6px 0 #08080d; }
+.profile-page main > h1 { margin: 0 0 22px; }
+.profile-page .status { color: var(--ink); background: #282535; }
+.profile-page .note { color: #d3d0dc; background: #22212c; }
+.profile-page p { color: var(--muted); }
+.profile-page .dot.on { background: var(--lime); }
+.profile-page button.primary { color: #141414; }
+.profile-page h1 { font-size: clamp(2rem,6vw,3rem); }
+.profile-page #message { color: var(--fail); }
+
+@media (max-width: 640px) {
+  .studio main { width: min(100% - 30px, 1160px); }
+  .studio .brand-row h1 { font-size: 1rem; }
+  .profile-page header { align-items: flex-start; flex-direction: column; }
+  .profile-page .card { padding: 20px; }
+}
+@media (prefers-reduced-motion: reduce) { button, a { transition: none !important; } }

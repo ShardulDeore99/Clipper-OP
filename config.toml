@@ -1,0 +1,120 @@
+# StreamClipper settings. Every value shown is the safe default.
+# Edit, save, and restart. A missing required key stops the app with a clear message.
+
+[general]
+mode = "fast"              # "fast"    = base model, 720p, QSV, fewer face samples
+                           # "quality" = small model, slower encode
+data_dir = "data"          # downloads, caches, database, logs (relative to this folder)
+debug = false              # true = save contact sheet, boundaries, layout, .ass/.srt per clip (from M3)
+show_rights_notice = true  # you are responsible for having rights/permission to clip a source
+
+[tools]
+ffmpeg = "ffmpeg"          # full path if FFmpeg is not on PATH, e.g. "C:/ffmpeg/bin/ffmpeg.exe"
+ffprobe = "ffprobe"
+
+[web]
+host = "127.0.0.1"         # keep as is: only this computer can open the UI
+port = 8765
+
+[download]
+max_height = 720           # cap source resolution (saves time and disk)
+keep_original = true       # keep the downloaded file so re-runs skip the download
+cookies_from_browser = ""  # fixes some 403s: "firefox" (most reliable on Windows), "chrome", "edge". Empty = off
+cookies_file = ""          # alternative: path to an exported cookies.txt
+# Only the source download touches the network. Nothing else does.
+
+[audio]
+sample_rate = 16000        # what Whisper expects
+channels = 1
+
+[clips]
+max_per_source = 0         # 0 = unlimited clips per source (no cap on sources either)
+min_seconds = 12           # used from M3
+target_min_seconds = 20
+target_max_seconds = 35
+max_seconds = 60
+lead_in_seconds = [2.0, 4.0]   # start this long before the key moment, then snap
+tail_out_seconds = [0.7, 1.0]  # end this long after the payoff, then snap
+hook_text = false
+
+[moments]                  # M3: how moments are found and chosen
+min_score = 0.40           # 0-1. Clips scoring below this are not planned. Lower = more clips
+candidates_per_minute = 3  # cheap signals shortlist this many moments per minute; only those get planned
+pause_seconds = 0.6        # a gap this long between words ends a sentence
+pause_boundary = 0.35      # a gap this long counts as a natural pause to cut on
+# Words/phrases that often mark a reaction (English + Hinglish). Add your creator's catchphrases.
+keywords = ["omg", "oh my god", "no way", "wtf", "insane", "crazy", "clutch", "let's go", "lets go",
+            "holy", "wow", "unbelievable", "impossible", "gg", "hilarious", "scary", "bro", "dude",
+            "pagal", "gazab", "kamaal", "kya baat", "arre baap re", "are baap re", "kasam se", "maar diya",
+            "zabardast", "dhamaka", "ye kya tha", "nahi yaar", "oh bhai"]
+# Words that make a strong opening line.
+hook_words = ["wait", "listen", "look", "guys", "imagine", "you won't believe", "check this",
+              "dekho", "suno", "ruko", "arre", "oye", "pata hai", "bhai", "yaar"]
+
+[intelligence]             # FragBytez AI: weights for signals that are available on each candidate
+audio_weight = 0.30
+chat_weight = 0.25
+speech_weight = 0.20
+visual_weight = 0.25
+humor_candidate_threshold = 32  # transcript cue score (0-100), heuristic not a humor guarantee
+high_priority_score = 85
+potential_score = 70
+review_score = 50
+
+[transcribe]
+language = "auto"          # "auto" | "en" | "hinglish"  (can also be chosen per source in the UI)
+                           # auto: English stretches stay English, Hinglish stretches are written like
+                           #       "mai kyu aau nahi tu ja" (detected every ~30 s). Other languages -> error
+                           # hinglish: force Hindi / Hindi+English in casual Roman letters
+hindi_script = "roman"     # Hindi is always written in Roman letters
+model_fast = "base"        # allowed: tiny, base, small (+ .en for English-only). medium/large are refused
+model_quality = "small"
+compute_type = "int8"
+cpu_threads = 4
+beam_size = 1
+vad_filter = true
+# Steers Whisper to write Hindi in Roman letters. Edit it to sound like your content.
+hinglish_prompt = "Aaj hum ek mast game khelenge. Bhai, ye bahut mazedaar hai, dekho kya hota hai! Chalo shuru karte hain."
+
+[framing]                  # M4
+layout = "auto"            # auto | single | two_speakers | gameplay_facecam | no_face  (can be changed per clip in the UI)
+face_sample_fps = 4        # face samples per second (on small frames), interpolated in between
+analysis_height = 360      # frames are shrunk to this height before face detection
+edge_margin_pct = 5        # faces stay at least this far inside the crop edges
+facecam_style = "split"    # gaming preset: "split" (facecam 16:9 on top, game 16:9 below, blurred background),
+                           # "stack" (tall gameplay on top, facecam below) or "corner" (rounded facecam box)
+# Normal videos: layout "fit_blur" puts the 16:9 video in the centre with blur above and below.
+
+[captions]                 # M5
+font = "Anton"             # looked up in assets/fonts and system fonts; falls back to Impact / Arial Black
+fallback_fonts = ["Impact", "Arial Black"]
+font_size = 92
+highlight_color = "lime"   # active word: "lime" or "yellow"
+words_per_caption = [2, 5]
+max_lines = 2
+y_center = 1250            # caption centre (1080x1920 frame). Allowed band is about y 1000-1500
+glossary = "glossary.txt"  # "heard => written" fixes for names, game terms, slang
+
+[render]                   # M6
+review_encoder = "auto"    # h264_qsv if it really works on this machine, else libx264
+export_crf = 18            # final export quality
+review_crf = 22            # quick review renders
+export_size = "1080x1920"
+export_fps = 30
+target_lufs = -14
+max_parallel_renders = 1   # 1-2. Never runs together with transcription (one job at a time)
+overlays = false           # reaction stickers (LOL / OMG / WOW...), off by default
+
+[live]                     # M8
+buffer_seconds = 180       # rolling recording kept on disk
+burst_db = 10              # a trigger needs the audio this many dB above normal...
+burst_seconds = 0.6        # ...for this long
+chat_spike_ratio = 3.0     # chat messages per second vs normal that count as a spike
+lead_seconds = 3.0         # keep this much before the trigger
+max_wait_seconds = 12      # keep recording after a trigger until a pause, but never longer than this
+merge_seconds = 8          # a trigger this soon after the last one joins the same clip while it is still open
+hold_seconds = 4           # after a pause, wait this long for one more trigger before cutting
+max_clip_seconds = 60
+
+[limits]
+max_memory_gb = 5

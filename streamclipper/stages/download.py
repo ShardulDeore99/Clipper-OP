@@ -64,10 +64,14 @@ def run(ctx, progress) -> dict:
 
 
 # YouTube sometimes answers 403 on the media request. Attempt 2 changes how we ask
-# (IPv4 only, chunked requests, more retries). Only 403s are retried; other errors stop at once.
+# (IPv4 only, chunked requests, more retries). Retry 403s and transient TLS/socket failures.
 ATTEMPTS = [("default", {}),
             ("IPv4, chunked, more retries",
              {"source_address": "0.0.0.0", "http_chunk_size": 10_485_760, "retries": 20, "fragment_retries": 100})]
+TRANSIENT_DOWNLOAD_ERRORS = (
+    "DECRYPTION_FAILED_OR_BAD_RECORD_MAC", "SSLEOFERROR", "TLSV1_ALERT",
+    "CONNECTIONRESETERROR", "REMOTE_DISCONNECTED",
+)
 
 
 def clean_error(msg: str) -> str:
@@ -116,7 +120,9 @@ def _download(ctx, progress) -> dict:
             msg = clean_error(str(e))
             tried.append(f"{label}: {msg}")
             log.warning("Download attempt '%s' failed: %s", label, msg)
-            if "403" not in msg:
+            upper = msg.upper()
+            retryable = "403" in upper or any(marker in upper for marker in TRANSIENT_DOWNLOAD_ERRORS)
+            if not retryable:
                 break
     hint = "Check the link."
     if "403" in tried[-1]:
@@ -125,6 +131,8 @@ def _download(ctx, progress) -> dict:
                 " or download the video yourself and add the file.")
         if not js_runtime():
             hint += " YouTube also needs a JavaScript runtime: winget install DenoLand.Deno"
+    elif any(marker in tried[-1].upper() for marker in TRANSIENT_DOWNLOAD_ERRORS):
+        hint = "The TLS connection failed during download. Retry the job; if it repeats, try a different network or disable VPN/HTTPS inspection for the download."
     raise StageError(NAME, "Download failed. " + " | ".join(tried), hint)
 
 

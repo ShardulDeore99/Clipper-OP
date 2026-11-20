@@ -27,16 +27,41 @@ class Worker(threading.Thread):
     def __init__(self, cfg, db):
         super().__init__(daemon=True)
         self.cfg, self.db, self.q = cfg, db, queue.Queue()
+        self.active: dict[int, threading.Event] = {}
+        self.lock = threading.Lock()
 
     def submit(self, job_id: int) -> None:
         self.q.put(job_id)
+
+    def stop(self, job_id: int) -> str:
+        with self.lock:
+            job = self.db.get_job(job_id)
+            event = self.active.get(job_id)
+            if job["status"] == "queued" and event is None:
+                self.db.update_job(job_id, status="stopped", error=None)
+                return "stopped"
+            if job["status"] in ("queued", "running", "stopping") and event is not None:
+                event.set()
+                self.db.update_job(job_id, status="stopping", error=None)
+                return "stopping"
+            raise ValueError(f"Cannot stop a job with status '{job['status']}'.")
 
     def run(self) -> None:
         while True:  # one task at a time: never transcribe and render together
             item = self.q.get()
             try:
                 if isinstance(item, int):
-                    run_job(self.cfg, self.db, item)
+                    with self.lock:
+                        job = self.db.get_job(item)
+                        if job["status"] not in ("queued", "running", "stopping"):
+                            continue
+                        cancel_event = threading.Event()
+                        self.active[item] = cancel_event
+                    try:
+                        run_job(self.cfg, self.db, item, cancel_event)
+                    finally:
+                        with self.lock:
+                            self.active.pop(item, None)
                 elif item[0] == "edit":
                     clipops.apply_edit(self.cfg, self.db, item[1], item[2])
                 elif item[0] == "export":
@@ -57,6 +82,7 @@ def create_app(cfg):
 
     @asynccontextmanager
     async def lifespan(app):
+        db.recover_stopping_jobs()
         worker.start()
         for job_id in db.pending_job_ids():  # resume anything interrupted by a restart
             worker.submit(job_id)
@@ -70,6 +96,11 @@ def create_app(cfg):
         end: float | None = None
         layout: str | None = None
         caption_text: str | None = None
+        facecam_style: str | None = None
+        facecam_x: float | None = None
+        facecam_y: float | None = None
+        gameplay_x: float | None = None
+        gameplay_y: float | None = None
 
     class NewLive(BaseModel):
         source: str
@@ -236,11 +267,30 @@ def create_app(cfg):
         worker.submit(job_id)  # finished stages are skipped from the cache
         return view(job_id)
 
+    @app.post("/api/jobs/{job_id}/stop")
+    def stop_job(job_id: int):
+        try:
+            status = worker.stop(job_id)
+        except LookupError:
+            raise HTTPException(404, "Job not found.")
+        except ValueError as e:
+            raise HTTPException(409, str(e))
+        return {"id": job_id, "status": status}
+
+    @app.post("/api/jobs/{job_id}/resume")
+    def resume_job(job_id: int):
+        job = view(job_id)
+        if job["status"] != "stopped":
+            raise HTTPException(409, "Only stopped jobs can be resumed.")
+        db.update_job(job_id, status="queued", error=None)
+        worker.submit(job_id)
+        return view(job_id)
+
     @app.delete("/api/jobs/{job_id}")
     def delete(job_id: int):
         job = view(job_id)
-        if job["status"] == "running":
-            raise HTTPException(409, "Wait for the running job to finish, then remove it.")
+        if job["status"] in ("running", "stopping"):
+            raise HTTPException(409, "Stop the running job and wait for it to finish before removing it.")
         db.delete_job(job_id)
         if job["source_key"] and db.jobs_with_key(job["source_key"]) == 0:
             cache.remove(cfg, job["source_key"])
@@ -250,14 +300,17 @@ def create_app(cfg):
     def clip_view(row: dict) -> dict:
         d = row["data"]
         job = db.get_job(row["job_id"])
+        style = (job.get("meta") or {}).get("style") or {}
         keep = ("cid", "score", "duration", "key_moment", "start_reason", "end_reason", "hook_text", "why", "text",
-                "flags", "meta", "layout", "layout_used", "caption_text", "edited", "error", "exporting", "notes",
+                "flags", "meta", "layout_used", "caption_text", "edited", "error", "exporting", "notes",
                 "provided_transcript_match")
         return {"id": row["id"], "job_id": row["job_id"], "job_title": job.get("title") or job["source"],
                 "job_source": job["source"], "status": row["status"],
                 "start": row["start"], "end": row["end"], "has_final": bool(d.get("files", {}).get("final")),
                 "has_cover": bool(d.get("files", {}).get("cover")), "v": int(Path(row["path"]).stat().st_mtime) if row.get("path") and Path(row["path"]).is_file() else 0,
-                **{k: d.get(k) for k in keep}}
+                **{k: d.get(k) for k in keep},
+                "layout": d.get("layout", style.get("layout")),
+                **{k: d.get(k, style.get(k)) for k in ("facecam_style", "facecam_x", "facecam_y", "gameplay_x", "gameplay_y")}}
 
     @app.get("/api/clips")
     def clips():

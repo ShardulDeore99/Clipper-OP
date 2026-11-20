@@ -153,8 +153,9 @@ def _static_crop(box, W, H, aspect, face_to_crop=3.2, headroom=0.38):
     return [int(x), int(y), int(cw), int(ch)]
 
 
-def frame_clip(cfg, ffmpeg, video, src_w, src_h, start, dur, detector, layout_override=None) -> dict:
+def frame_clip(cfg, ffmpeg, video, src_w, src_h, start, dur, detector, layout_override=None, positions=None) -> dict:
     cf = cfg["framing"]
+    positions = {**cf, **(positions or {})}
     fps = cf["face_sample_fps"]
     frames, times = sample_frames(ffmpeg, video, start, dur, src_w, src_h, fps, cf["analysis_height"])
     dt = 1.0 / fps
@@ -167,7 +168,7 @@ def frame_clip(cfg, ffmpeg, video, src_w, src_h, start, dur, detector, layout_ov
     layout = chosen if forced == "auto" else forced
     fr = {"layout": layout, "auto_layout": chosen, "forced": forced != "auto", "W": src_w, "H": src_h,
           "samples": [{"t": t, "boxes": [[round(v, 3) for v in b] for b in f]} for t, f in zip(times, faces)],
-          "style": cf["facecam_style"],
+          "style": positions["facecam_style"],
           "face_ratio": round(sum(1 for f in faces if f) / max(len(faces), 1), 3), "violations": 0.0, "regions": []}
     if layout == "single" and any(faces):
         crop, _ = track_single(faces, times, resets, src_w, src_h, cf, dt)
@@ -199,6 +200,25 @@ def frame_clip(cfg, ffmpeg, video, src_w, src_h, start, dur, detector, layout_ov
                            for t, x in zip(times, mx)])
         fr["game"] = {"cw": gw, "ch": gh, "path": gpath}
         fr["regions"] = [{"dst": [0, 0, OUT_W, 1152], "cw": gw, "ch": gh, "path": gpath}]
+        if fr["style"] == "split":
+            game_size, face_size = (OUT_W, 608), (OUT_W, 608)
+            game_default, face_default = (0, 770), (0, 150)
+        elif fr["style"] == "corner":
+            game_size, face_size = (OUT_W, 608), (400, 300)
+            game_default, face_default = (0, 656), (40, 160)
+        else:
+            game_size, face_size = (OUT_W, 1152), (OUT_W, 768)
+            game_default, face_default = (0, 0), (0, 1152)
+
+        def layer_position(name, default, size):
+            x = min(max(round(float(positions.get(f"{name}_x", default[0]))), 0), OUT_W - size[0])
+            y = min(max(round(float(positions.get(f"{name}_y", default[1]))), 0), OUT_H - size[1])
+            return [x, y, *size]
+
+        fr["composition"] = {
+            "gameplay": layer_position("gameplay", game_default, game_size),
+            "facecam": layer_position("facecam", face_default, face_size),
+        }
     return fr
 
 
@@ -218,27 +238,30 @@ def build_filter(fr: dict, style: str = "stack") -> str:
         return f"[0:v]split=2[s0][s1];{';'.join(parts)};[r0][r1]vstack,{tail}[v]"
     if layout == "gameplay_facecam":
         fb, g = fr["facecam_box"], fr["game"]
+        composition = fr.get("composition", {})
+        gx, gy, gw_out, gh_out = composition.get("gameplay", [0, 770, OUT_W, 608])
+        fx_out, fy_out, fw_out, fh_out = composition.get("facecam", [0, 150, OUT_W, 608])
         fx, fy = int(fb[0] * W), int(fb[1] * H)
         fw, fh = _even((fb[2] - fb[0]) * W), _even((fb[3] - fb[1]) * H)
         fw, fh = min(fw, W - fx), min(fh, H - fy)
-        if style == "split":  # gaming preset: facecam 16:9 on top, game 16:9 below, blurred background
+        if style in ("split", "stack"):
+            game_scale = (f"[g0]scale={gw_out}:{gh_out}[gs];" if style == "split" else
+                          f"[g0]crop={g['cw']}:{g['ch']}:x='{_expr(g['path'], 1)}':y=0,scale={gw_out}:{gh_out}[gs];")
             return (f"[0:v]split=3[bg][g0][f0];"
                     f"[bg]scale={OUT_W}:{OUT_H}:force_original_aspect_ratio=increase,crop={OUT_W}:{OUT_H},boxblur=40:5[b];"
-                    f"[f0]crop={fw}:{fh}:{fx}:{fy},scale={OUT_W}:608:force_original_aspect_ratio=increase,crop={OUT_W}:608[fc];"
-                    f"[g0]scale={OUT_W}:608[gs];[b][fc]overlay=0:150[t1];[t1][gs]overlay=0:770,{tail}[v]")
+                    f"[f0]crop={fw}:{fh}:{fx}:{fy},scale={fw_out}:{fh_out}:force_original_aspect_ratio=increase,"
+                    f"crop={fw_out}:{fh_out}[fc];"
+                    f"{game_scale}"
+                    f"[b][gs]overlay={gx}:{gy}[t1];[t1][fc]overlay={fx_out}:{fy_out},{tail}[v]")
         if style == "corner":
             r = 28
-            return (f"[0:v]split=3[bg][fg][fc];"
+            return (f"[0:v]split=3[bg][g0][f0];"
                     f"[bg]scale={OUT_W}:{OUT_H}:force_original_aspect_ratio=increase,crop={OUT_W}:{OUT_H},boxblur=30:3[b];"
-                    f"[fg]scale={OUT_W}:-2[f];[b][f]overlay=(W-w)/2:(H-h)/2[base];"
-                    f"[fc]crop={fw}:{fh}:{fx}:{fy},scale=400:300,format=yuva420p,"
+                    f"[g0]scale={gw_out}:-2[g];[b][g]overlay={gx}:{gy}[base];"
+                    f"[f0]crop={fw}:{fh}:{fx}:{fy},scale=400:300,format=yuva420p,"
                     f"geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':"
                     f"a='if(lte(hypot(max(abs(X-W/2)-(W/2-{r}),0),max(abs(Y-H/2)-(H/2-{r}),0)),{r}),255,0)'[fcr];"
-                    f"[base][fcr]overlay=40:160,{tail}[v]")
-        return (f"[0:v]split=2[g0][f0];"
-                f"[g0]crop={g['cw']}:{g['ch']}:x='{_expr(g['path'], 1)}':y=0,scale=1080:1152,setsar=1[gt];"
-                f"[f0]crop={fw}:{fh}:{fx}:{fy},scale=1080:768:force_original_aspect_ratio=increase,crop=1080:768,setsar=1[fb];"
-                f"[gt][fb]vstack,{tail}[v]")
+                    f"[base][fcr]overlay={fx_out}:{fy_out},{tail}[v]")
     return (f"[0:v]split=2[bg][fg];[bg]scale={OUT_W}:{OUT_H}:force_original_aspect_ratio=increase,"
             f"crop={OUT_W}:{OUT_H},boxblur=40:5[b];[fg]scale={OUT_W}:-2[f];[b][f]overlay=(W-w)/2:(H-h)/2,{tail}[v]")
 
@@ -270,19 +293,23 @@ def faces_in_output(fr: dict, t: float) -> list[tuple[float, float, float, float
                                 (b[2] * W - cx) * dw / cw + dx, (b[3] * H - cy) * dh / ch + dy))
     elif layout == "gameplay_facecam" and "facecam_box" in fr:
         fb = fr["facecam_box"]
+        composition = fr.get("composition", {})
+        fx_out, fy_out, fw_out, fh_out = composition.get("facecam", [0, 150, OUT_W, 608])
         fx, fy = fb[0] * W, fb[1] * H
         fw, fh = (fb[2] - fb[0]) * W, (fb[3] - fb[1]) * H
         for b in boxes:
             x0, y0, x1, y1 = b[0] * W - fx, b[1] * H - fy, b[2] * W - fx, b[3] * H - fy
             if fr.get("style") == "split":
-                sc = max(OUT_W / fw, 608 / fh)
-                ox, oy = (fw * sc - OUT_W) / 2, (fh * sc - 608) / 2
-                out.append((x0 * sc - ox, y0 * sc - oy + 150, x1 * sc - ox, y1 * sc - oy + 150))
+                sc = max(fw_out / fw, fh_out / fh)
+                ox, oy = (fw * sc - fw_out) / 2, (fh * sc - fh_out) / 2
+                out.append((x0 * sc - ox + fx_out, y0 * sc - oy + fy_out,
+                            x1 * sc - ox + fx_out, y1 * sc - oy + fy_out))
             elif fr.get("style") == "corner":
-                sx, sy = 400 / fw, 300 / fh
-                out.append((40 + x0 * sx, 160 + y0 * sy, 40 + x1 * sx, 160 + y1 * sy))
+                sx, sy = fw_out / fw, fh_out / fh
+                out.append((fx_out + x0 * sx, fy_out + y0 * sy, fx_out + x1 * sx, fy_out + y1 * sy))
             else:
-                sc = max(OUT_W / fw, 768 / fh)
-                ox, oy = (fw * sc - OUT_W) / 2, (fh * sc - 768) / 2
-                out.append((x0 * sc - ox, y0 * sc - oy + 1152, x1 * sc - ox, y1 * sc - oy + 1152))
+                sc = max(fw_out / fw, fh_out / fh)
+                ox, oy = (fw * sc - fw_out) / 2, (fh * sc - fh_out) / 2
+                out.append((x0 * sc - ox + fx_out, y0 * sc - oy + fy_out,
+                            x1 * sc - ox + fx_out, y1 * sc - oy + fy_out))
     return [tuple(round(v, 1) for v in b) for b in out]

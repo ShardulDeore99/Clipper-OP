@@ -225,25 +225,33 @@ def plan_clips(cands, words, sents, starts, ends, p, duration):
 
 
 def plan_time_ranges(ranges, words, sents, starts, ends, p, duration):
-    """Create one clip per user-supplied interval without snapping or merging its boundaries."""
+    """Create one clip per usable user interval without snapping or merging its boundaries."""
     clips, rejected = [], []
     for start, end in ranges:
+        if start >= duration:
+            rejected.append({"t": round((start + end) / 2, 2), "reason": f"range starts after the source ends ({duration:.1f} s)"})
+            continue
+        end = min(end, duration)
         key_t = (start + end) / 2
-        if end > duration:
-            rejected.append({"t": round(key_t, 2), "reason": f"range ends after the source ({duration:.1f} s)"})
-            continue
-        if end - start < p["min_s"] or end - start > p["max_s"]:
-            rejected.append({"t": round(key_t, 2), "reason": f"range length must be {p['min_s']:g}-{p['max_s']:g} s"})
-            continue
         indices = [i for i, word in enumerate(words) if word["end"] > start and word["start"] < end]
-        if not indices or not sents:
-            rejected.append({"t": round(key_t, 2), "reason": "no transcript words found inside the range"})
-            continue
-        i0, i1 = indices[0], indices[-1]
-        payoff_t = min(end, words[i1]["end"])
-        clip = make_clip(i0, i1, key_t, payoff_t, 0.95, {"speech": 0.9}, 0.0, end,
-                         "user-supplied timestamp start", "user-supplied timestamp end",
-                         ["kept the supplied timestamp range"], words, sents, starts, ends, p, duration)
+        if indices and sents:
+            i0, i1 = indices[0], indices[-1]
+            payoff_t = min(end, words[i1]["end"])
+            clip = make_clip(i0, i1, key_t, payoff_t, 0.95, {"speech": 0.9}, 0.0, end,
+                             "user-supplied timestamp start", "user-supplied timestamp end",
+                             ["kept the supplied timestamp range"], words, sents, starts, ends, p, duration)
+        else:
+            uid = hashlib.sha1(f"{start:.3f}-{end:.3f}".encode()).hexdigest()[:8]
+            clip = {"cid": f"c{uid}", "start": round(start, 3), "end": round(end, 3),
+                    "duration": round(end - start, 2), "score": 0.95, "strength": 0.95,
+                    "key_moment": round(key_t, 2), "payoff": round(end, 3), "i0": -1, "i1": -1,
+                    "start_kind": "fallback", "end_kind": "fallback",
+                    "start_reason": "user-supplied timestamp start", "end_reason": "user-supplied timestamp end",
+                    "notes": ["kept the supplied timestamp range; no transcript words were found"],
+                    "hook_text": "", "hook_score": 0.0, "hook_is_opening": True,
+                    "ending_score": 0.0, "density": 1.0, "fit": _clip01(1 - abs((end - start) - p["target_min"]) / max(p["target_min"], 1)),
+                    "why": "user-supplied timestamp", "signals": {}, "burst_end": end,
+                    "flags_plan": [], "text": ""}
         clip["start"], clip["end"] = round(start, 3), round(end, 3)
         clip["duration"] = round(end - start, 2)
         clip["key_moment"] = round(key_t, 2)

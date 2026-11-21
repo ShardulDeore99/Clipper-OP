@@ -8,7 +8,9 @@ Whisper models are never downloaded here: no hidden network calls. Use `fetch-mo
 """
 import inspect
 import logging
+import tempfile
 import time
+import wave
 from pathlib import Path
 
 from .. import cache
@@ -22,6 +24,7 @@ FILE_KEYS = ("transcript_json", "srt")
 ALLOWED_MODELS = {"tiny", "tiny.en", "base", "base.en", "small", "small.en"}  # never medium/large
 LANGUAGES = ("auto", "en", "hinglish")
 _MODELS: dict = {}
+TRANSCRIBE_CHUNK_SECONDS = 300
 
 
 def normalize_language(value: str) -> str:
@@ -148,21 +151,72 @@ def _clean_words(seg, casual: bool) -> list[dict]:
     return out
 
 
+def _audio_chunks(wav_path: str | Path, chunk_seconds: int = TRANSCRIBE_CHUNK_SECONDS):
+    """Yield bounded-size WAVs so feature extraction never builds a multi-hour spectrogram."""
+    wav_path = Path(wav_path)
+    with wave.open(str(wav_path), "rb") as source:
+        params = source.getparams()
+        rate, total_frames = params.framerate, params.nframes
+        chunk_frames = max(1, rate * chunk_seconds)
+        if total_frames <= chunk_frames:
+            yield wav_path, 0.0, total_frames / rate
+            return
+
+        with tempfile.TemporaryDirectory(prefix="transcribe-", dir=wav_path.parent) as temp_dir:
+            index = 0
+            offset_frames = 0
+            while offset_frames < total_frames:
+                count = min(chunk_frames, total_frames - offset_frames)
+                audio = source.readframes(count)
+                chunk_path = Path(temp_dir) / f"chunk-{index:05d}.wav"
+                with wave.open(str(chunk_path), "wb") as chunk:
+                    chunk.setnchannels(params.nchannels)
+                    chunk.setsampwidth(params.sampwidth)
+                    chunk.setframerate(rate)
+                    chunk.writeframes(audio)
+                yield chunk_path, offset_frames / rate, count / rate
+                chunk_path.unlink(missing_ok=True)
+                offset_frames += count
+                index += 1
+
+
 def run(ctx, progress) -> dict:
     model_name, language = settings(ctx)
     t, duration = ctx.cfg["transcribe"], float(ctx.out["duration"])
     model = load_model(ctx.cfg, model_name)
     t0 = time.perf_counter()
-    segs, info, used, how = _start(model, ctx.out["wav"], t, language)
-
     segments, dropped = [], 0
-    for seg in segs:
-        words = _clean_words(seg, casual=(used != "en" or how == "per-window"))
-        if not words:
-            dropped += 1
-            continue
-        segments.append(make_segment(len(segments), words[0]["start"], words[-1]["end"], words))
-        progress(min(seg.end / duration, 0.99) if duration else 0.5)
+    used_languages, detected_languages, language_modes = set(), set(), set()
+    chunk_count = 0
+    for chunk_path, offset, chunk_duration in _audio_chunks(ctx.out["wav"]):
+        segs, info, used, how = _start(model, str(chunk_path), t, language)
+        used_languages.add(used)
+        language_modes.add(how)
+        detected = getattr(info, "language", used)
+        if detected:
+            detected_languages.add(detected)
+        chunk_count += 1
+        for seg in segs:
+            words = _clean_words(seg, casual=(used != "en" or how == "per-window"))
+            if not words:
+                dropped += 1
+                continue
+            for word in words:
+                word["start"] = round(word["start"] + offset, 3)
+                word["end"] = round(word["end"] + offset, 3)
+            segments.append(make_segment(len(segments), words[0]["start"], words[-1]["end"], words))
+        progress(min((offset + chunk_duration) / duration, 0.99) if duration else 0.5)
+
+    used = "hinglish" if "hinglish" in used_languages else "en"
+    if language != "auto":
+        how = "fixed"
+    elif "per-window" in language_modes:
+        how = "per-window"
+    elif chunk_count > 1:
+        how = "per-chunk"
+    else:
+        how = next(iter(language_modes), "per-video")
+    detected = next(iter(detected_languages)) if len(detected_languages) == 1 else "mixed" if detected_languages else used
     secs = time.perf_counter() - t0
     n_words = sum(len(s["words"]) for s in segments)
     if n_words == 0:
@@ -170,7 +224,7 @@ def run(ctx, progress) -> dict:
     if dropped:
         log.warning("Dropped %d segments without word timestamps", dropped)
 
-    data = {"language": used, "language_mode": how, "detected": getattr(info, "language", used), "model": model_name,
+    data = {"language": used, "language_mode": how, "detected": detected, "model": model_name,
             "duration": duration, "speech": n_words > 0,
             "stats": {"words": n_words, "segments": len(segments), "seconds": round(secs, 2),
                       "x_realtime": round(duration / secs, 2) if secs else None},

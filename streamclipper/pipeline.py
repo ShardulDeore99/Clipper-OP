@@ -25,7 +25,10 @@ class Context:
     out: dict = field(default_factory=dict)  # outputs of finished stages, shared downstream
 
 
-def run_job(cfg, db: Database, job_id: int) -> Timer:
+def run_job(cfg, db: Database, job_id: int, cancel_event=None) -> Timer:
+    if cancel_event is not None and cancel_event.is_set():
+        db.update_job(job_id, status="stopped", error=None)
+        return Timer()
     db.update_job(job_id, status="running", error=None, stage="download", progress=0.0, started=time.time())
     db.clear_stage_runs(job_id)
     timer, current = Timer(), "download"
@@ -40,6 +43,9 @@ def run_job(cfg, db: Database, job_id: int) -> Timer:
 
         for stage in STAGES:
             current = stage.NAME
+            if cancel_event is not None and cancel_event.is_set():
+                db.update_job(job_id, status="stopped", stage=current, error=None)
+                return timer
             db.update_job(job_id, stage=current, progress=0.0)
             inputs = stage.cache_inputs(ctx)
             hit = None if getattr(stage, "ALWAYS", False) else cache.lookup(cfg, key, current, inputs, stage.FILE_KEYS)
@@ -57,7 +63,13 @@ def run_job(cfg, db: Database, job_id: int) -> Timer:
             ctx.out.update(outputs)
             timer.rows.append((current, secs, False))
             db.record_stage(job_id, current, secs, False)
+            if cancel_event is not None and cancel_event.is_set():
+                db.update_job(job_id, status="stopped", stage=current, progress=1.0, error=None)
+                return timer
 
+        if cancel_event is not None and cancel_event.is_set():
+            db.update_job(job_id, status="stopped", stage=current, progress=1.0, error=None)
+            return timer
         meta = {k: ctx.out[k] for k in ("duration", "width", "height", "fps", "language", "words", "speech", "x_realtime", "n_clips", "n_flagged", "n_failed")
                 if k in ctx.out}
         db.update_job(job_id, status="done", progress=1.0, title=ctx.out.get("title"), meta=meta)

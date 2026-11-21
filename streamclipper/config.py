@@ -83,6 +83,7 @@ STYLE_CHOICES = {
     "caption_size": ("small", "medium", "large"),
     "caption_mode": ("on", "off"),
 }
+LAYER_POSITION_KEYS = ("facecam_x", "facecam_y", "gameplay_x", "gameplay_y")
 CAPTION_Y = {"upper": 1060, "middle": 1250, "lower": 1420}
 CAPTION_PX = {"small": 72, "medium": 92, "large": 112}
 
@@ -91,8 +92,8 @@ def clean_style(style: dict | None) -> dict:
     """Keep only known keys with known values; an empty/unknown value means 'use config.toml'."""
     out = {}
     for k, v in (style or {}).items():
-        if k in ("caption_x", "caption_y"):
-            limit = 1080 if k == "caption_x" else 1920
+        if k in ("caption_x", "caption_y", *LAYER_POSITION_KEYS):
+            limit = 1080 if k.endswith("_x") else 1920
             if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 <= v <= limit:
                 raise ConfigError(f"{k} must be a number between 0 and {limit}")
             out[k] = round(v)
@@ -116,6 +117,9 @@ def job_cfg(cfg: "Config", job: dict | None) -> "Config":
         d["framing"]["layout"] = style["layout"]
     if "facecam_style" in style:
         d["framing"]["facecam_style"] = style["facecam_style"]
+    for k in LAYER_POSITION_KEYS:
+        if k in style:
+            d["framing"][k] = style[k]
     if "caption_pos" in style:
         d["captions"]["y_center"] = CAPTION_Y[style["caption_pos"]]
     if "caption_x" in style:

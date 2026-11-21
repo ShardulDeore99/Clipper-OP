@@ -63,6 +63,9 @@
   .phone .guide-h { left:0; right:0; top:50%; border-top:1px dashed; }
   .phone.dragging .guide { opacity:1; }
   .phone .blk { position: absolute; left: 0; right: 0; display: grid; place-items: center; color: #fff; font-size: .8rem; font-weight: 600; }
+  .phone .layer { z-index:1; left:auto; right:auto; cursor:grab; touch-action:none; user-select:none; border:1px dashed rgba(255,255,255,.72); }
+  .phone .layer.facecam { z-index:2; }
+  .phone .layer:active { cursor:grabbing; }
   .phone .cap { position: absolute; z-index:3; display: flex; justify-content: center; width:max-content; max-width:calc(100% - 12px); transform:translate(-50%,-50%); font-family: Impact, "Arial Black", sans-serif; font-weight: 700; letter-spacing: .5px; line-height:1.1; color: #fff; cursor: grab; touch-action:none; user-select:none; white-space:normal; text-align:center; }
   .phone .cap:active { cursor:grabbing; }
   .phone .cap span { padding: 2px 8px; }
@@ -226,6 +229,8 @@
     </form>
     <p class="msg" id="msg" role="alert"></p>
     <p class="notice" id="notice"></p>
+    <h2>Jobs</h2>
+    <div id="jobs" aria-live="polite"></div>
   </section>
 
   <section id="panel-live" role="tabpanel" aria-labelledby="tab-live" hidden>
@@ -278,7 +283,7 @@
         <label>Caption size<select id="look-caption_size"></select></label>
         <label>On-screen captions<select id="look-caption_mode"></select></label>
       </div>
-      <div class="pv-wrap"><strong>Preview · drag caption</strong><div class="phone" id="pv" aria-hidden="true"></div><span id="pv-note">Example frame</span><span>Center guides appear while dragging.</span></div>
+      <div class="pv-wrap"><strong>Preview · drag caption, facecam, or gameplay</strong><div class="phone" id="pv" aria-hidden="true"></div><span id="pv-note">Example frame</span><span>Drag the teal facecam and purple gameplay blocks to place them.</span></div>
     </div>
     <p class="msg" id="look-msg" role="alert"></p>
     <div class="dlg-foot">
@@ -366,7 +371,7 @@ function strip(job) {
     if (meta.implemented.includes(name)) {
       cls = "todo";
       if (done[name]) { cls = "done"; note = done[name].cached ? "cached" : `${done[name].seconds.toFixed(1)} s`; }
-      else if (job.stage === name && job.status === "running") { cls = "running"; fill = Math.round((job.progress || 0) * 100); }
+      else if (job.stage === name && ["running", "stopping"].includes(job.status)) { cls = "running"; fill = Math.round((job.progress || 0) * 100); }
       else if (job.stage === name && job.status === "failed") cls = "failed";
     }
     return el("div", { class: `seg ${cls}`, role: "listitem" },
@@ -378,20 +383,20 @@ function strip(job) {
 const STAGE_LABELS = { download: "Downloading source", audio: "Analyzing audio", transcribe: "Transcribing audio", segment: "Finding speech segments", score: "Finding moments", plan: "Planning clips", frame: "Framing clips", render: "Rendering clips", check: "Checking clips", save: "Saving clips" };
 function elapsedTime(job) {
   if (!job.started) return "Not started";
-  const end = job.status === "running" ? Date.now() / 1000 : (job.updated || Date.now() / 1000);
+  const end = ["running", "stopping"].includes(job.status) ? Date.now() / 1000 : (job.updated || Date.now() / 1000);
   const seconds = Math.max(0, Math.floor(end - job.started));
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 function overallProgress(job) {
   const index = Math.max(0, meta.planned.indexOf(job.stage));
-  return job.status === "done" ? 100 : job.status === "running"
+  return job.status === "done" ? 100 : ["running", "stopping", "stopped"].includes(job.status)
     ? Math.round(((index + Math.max(0, Math.min(1, job.progress || 0))) / meta.planned.length) * 100) : 0;
 }
 
 function progressPanel(job) {
   const currentStage = STAGE_LABELS[job.stage] || job.stage || "Preparing";
   const progress = overallProgress(job);
-  const progressLabel = job.status === "queued" ? "Waiting to start" : job.status === "done" ? "Processing complete" : job.status === "failed" ? `Stopped during ${currentStage.toLowerCase()}` : `${currentStage} - ${Math.round((job.progress || 0) * 100)}% of this step`;
+  const progressLabel = job.status === "queued" ? "Waiting to start" : job.status === "stopping" ? `Stopping after ${currentStage.toLowerCase()}` : job.status === "stopped" ? `Stopped after ${currentStage.toLowerCase()}` : job.status === "done" ? "Processing complete" : job.status === "failed" ? `Failed during ${currentStage.toLowerCase()}` : `${currentStage} - ${Math.round((job.progress || 0) * 100)}% of this step`;
   return el("div", { class: `job-tracker ${job.status}` },
     el("div", { class: "job-progress-head" }, el("strong", {}, progressLabel), el("span", {}, `Time ${elapsedTime(job)} | ${progress}% overall`)),
     el("div", { class: "job-progress-track", role: "progressbar", "aria-label": "Overall processing progress", "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": String(progress) },
@@ -400,7 +405,7 @@ function progressPanel(job) {
 }
 
 function card(job) {
-  const label = { queued: "Queued", running: "Running", done: "Done", failed: "Failed" }[job.status];
+  const label = { queued: "Queued", running: "Running", stopping: "Stopping", stopped: "Stopped", done: "Done", failed: "Failed" }[job.status];
   const m = job.meta || {};
   const tr = job.timings.find((t) => t.stage === "transcribe");
   let facts = null;
@@ -417,17 +422,20 @@ function card(job) {
     el("div", { class: "head" }, el("div", { class: "title" }, job.title || "Preparing…"), el("span", { class: `chip ${job.status}` }, label)),
     el("div", { class: "src" }, job.source),
     progressPanel(job),
-    facts && el("p", { class: "facts" }, facts),
-    job.error && el("div", { class: "error", role: "alert" }, `Failed at ${job.stage}: ${job.error}`),
     el("div", { class: "actions" },
       job.status === "failed" && el("button", { class: "primary", onclick: () => act(job.id, "POST", "/retry") }, "Retry"),
+      job.status === "stopped" && el("button", { class: "primary", onclick: () => act(job.id, "POST", "/resume") }, "Resume"),
       job.status === "done" && el("button", { onclick: () => act(job.id, "POST", "/retry") }, "Run again"),
-      job.status !== "running" && el("button", { class: "quiet", onclick: () => act(job.id, "DELETE", "") }, "Remove")));
+      ["queued", "running"].includes(job.status) && el("button", { class: "quiet", onclick: () => act(job.id, "POST", "/stop") }, job.status === "queued" ? "Stop" : "Stop after this step"),
+      job.status === "stopping" && el("button", { class: "quiet", disabled: "" }, "Stopping…"),
+      !["running", "stopping"].includes(job.status) && el("button", { class: "quiet", onclick: () => act(job.id, "DELETE", "") }, "Remove")),
+    facts && el("p", { class: "facts" }, facts),
+    job.error && el("div", { class: "error", role: "alert" }, `Failed at ${job.stage}: ${job.error}`));
 }
 
 async function act(id, method, suffix) {
   try { await api(`/api/jobs/${id}${suffix}`, { method }); } catch (e) { $("#msg").textContent = e.message; }
-  refresh();
+  await Promise.all([refresh(), loadClips(true)]);
 }
 
 async function removeProject(id, name) {
@@ -511,9 +519,11 @@ const LOOK = {
   caption_mode: { on: "On", off: "Off" },
 };
 let customCaptionPosition = null;
+let customLayerPositions = null;
 const lookBody = () => ({
   ...Object.fromEntries(Object.keys(LOOK).map((k) => [k, $(`#look-${k}`).value])),
   ...(customCaptionPosition || {}),
+  ...(customLayerPositions || {}),
 });
 const lookSave = () => { try { localStorage.setItem("sc-look", JSON.stringify(lookBody())); } catch (e) {} };
 
@@ -542,6 +552,7 @@ for (const t of TABS) {
 const lookText = () => [
   ...Object.keys(LOOK).map((k) => { const s = $(`#look-${k}`); return s.value ? s.selectedOptions[0].textContent : null; }).filter(Boolean),
   ...(customCaptionPosition ? ["Custom caption position"] : []),
+  ...(customLayerPositions ? ["Custom facecam/gameplay position"] : []),
 ];
 const refreshSummary = () => { const t = lookText(); $("#look-summary").textContent = "Look: " + (t.length ? t.join(", ") : "all defaults"); };
 
@@ -563,9 +574,25 @@ function renderPreview() {
   if (layout === "single") { parts.push(blk(0, 320, "#0f5c6e", "Face crop")); note = "One speaker, face kept in frame"; }
   else if (layout === "two_speakers") { parts.push(blk(0, 160, "#0f5c6e", "Speaker 1"), blk(160, 160, "#7a4fb0", "Speaker 2")); note = "Two speakers stacked"; }
   else if (layout === "fit_blur") { parts.push(blk(110, 101, "#2a6fa8", "Video 16:9")); note = "Video centred, blurred background"; }
-  else if (style === "stack") { parts.push(blk(0, 210, "#5b4bb7", "Gameplay"), blk(210, 110, "#0f5c6e", "Facecam")); note = auto || "Gaming: game on top, facecam below"; }
-  else if (style === "corner") { parts.push(blk(0, 320, "#5b4bb7", "Gameplay"), el("div", { class: "blk", style: "top:14px;left:10px;right:auto;width:70px;height:44px;border-radius:10px;background:#0f5c6e" }, "Cam")); note = auto || "Gaming: small facecam box"; }
-  else { parts.push(blk(58, 101, "#0f5c6e", "Facecam"), blk(159, 101, "#5b4bb7", "Gameplay")); note = auto || "Gaming: facecam top, game below"; }
+  else if (layout === "auto" || layout === "gameplay_facecam") {
+    const gameSize = style === "stack" ? [1080, 1152] : [1080, 608];
+    const camSize = style === "stack" ? [1080, 768] : style === "corner" ? [400, 300] : [1080, 608];
+    const defaults = style === "stack"
+      ? { gameplay: [0, 0], facecam: [0, 1152] }
+      : style === "corner" ? { gameplay: [0, 656], facecam: [40, 160] }
+        : { gameplay: [0, 770], facecam: [0, 150] };
+    const addLayer = (name, label, color, size) => {
+      const [dx, dy] = defaults[name];
+      const x = Math.max(0, Math.min(1080 - size[0], customLayerPositions?.[`${name}_x`] ?? dx));
+      const y = Math.max(0, Math.min(1920 - size[1], customLayerPositions?.[`${name}_y`] ?? dy));
+      parts.push(el("div", { class: `blk layer ${name}`, "data-layer": name,
+        style: `left:${x / 6}px;top:${y / 6}px;width:${size[0] / 6}px;height:${size[1] / 6}px;right:auto;background:${color}${style === "corner" && name === "facecam" ? ";border-radius:10px" : ""}` }, label));
+    };
+    addLayer("gameplay", "Gameplay", "#5b4bb7", gameSize);
+    addLayer("facecam", style === "corner" ? "Cam" : "Facecam", "#0f5c6e", camSize);
+    note = auto || (style === "stack" ? "Gaming: game and facecam" : style === "corner" ? "Gaming: small facecam box" : "Gaming: facecam and gameplay");
+  }
+  else { parts.push(blk(110, 101, "#2a6fa8", "Video 16:9")); note = "Video centred, blurred background"; }
   parts.push(el("div", { class: "guide guide-v" }), el("div", { class: "guide guide-h" }));
   if ((v.caption_mode || "on") !== "off") {
     const [highlight, accent] = captionPalettes[v.caption_theme] || captionPalettes.funny;
@@ -574,6 +601,37 @@ function renderPreview() {
   $("#pv").replaceChildren(...parts);
   $("#pv-note").textContent = note;
   const phone = $("#pv"), caption = phone.querySelector(".cap");
+  phone.querySelectorAll(".layer").forEach((layer) => {
+    const name = layer.dataset.layer;
+    layer.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      if ($("#look-layout").value !== "gameplay_facecam") {
+        $("#look-layout").value = "gameplay_facecam";
+        $("#pv-note").textContent = "Gaming: facecam + game";
+        refreshSummary();
+      }
+      phone.classList.add("dragging");
+      layer.dataset.dragOffsetX = String(event.clientX - layer.getBoundingClientRect().left);
+      layer.dataset.dragOffsetY = String(event.clientY - layer.getBoundingClientRect().top);
+      layer.setPointerCapture(event.pointerId);
+    });
+    layer.addEventListener("pointermove", (event) => {
+      if (!layer.hasPointerCapture(event.pointerId)) return;
+      const rect = phone.getBoundingClientRect();
+      const x = Math.max(0, Math.min(rect.width - layer.offsetWidth, event.clientX - rect.left - Number(layer.dataset.dragOffsetX)));
+      const y = Math.max(0, Math.min(rect.height - layer.offsetHeight, event.clientY - rect.top - Number(layer.dataset.dragOffsetY)));
+      layer.style.left = `${x}px`;
+      layer.style.top = `${y}px`;
+      customLayerPositions = { ...(customLayerPositions || {}), [`${name}_x`]: Math.round(x / rect.width * 1080), [`${name}_y`]: Math.round(y / rect.height * 1920) };
+      refreshSummary();
+    });
+    const finishLayerDrag = (event) => {
+      if (layer.hasPointerCapture(event.pointerId)) layer.releasePointerCapture(event.pointerId);
+      phone.classList.remove("dragging");
+    };
+    layer.addEventListener("pointerup", finishLayerDrag);
+    layer.addEventListener("pointercancel", finishLayerDrag);
+  });
   if (caption) {
     caption.addEventListener("pointerdown", (event) => {
       event.preventDefault();
@@ -659,6 +717,26 @@ async function clipAct(id, path, body, method = "POST") {
   loadClips(true);
 }
 
+function positionClip(c) {
+  const initial = { layout: "gameplay_facecam",
+    facecam_style: c.facecam_style || "split" };
+  for (const k of Object.keys(LOOK)) $(`#look-${k}`).value = initial[k] || "";
+  customCaptionPosition = null;
+  const layerKeys = ["facecam_x", "facecam_y", "gameplay_x", "gameplay_y"];
+  customLayerPositions = layerKeys.some((k) => Number.isFinite(c[k]))
+    ? Object.fromEntries(layerKeys.filter((k) => Number.isFinite(c[k])).map((k) => [k, c[k]])) : null;
+  $("#look-remember").checked = false;
+  renderPreview();
+  refreshSummary();
+  openLook({ forText: "Position facecam and gameplay for this clip", goLabel: "Re-render clip",
+    go: async () => {
+      const body = { ...(customLayerPositions || {}) };
+      if (["auto", "gameplay_facecam", "single", "two_speakers", "fit_blur"].includes($("#look-layout").value)) body.layout = $("#look-layout").value;
+      if (["split", "stack", "corner"].includes($("#look-facecam_style").value)) body.facecam_style = $("#look-facecam_style").value;
+      await clipAct(c.id, "/edit", body);
+    } });
+}
+
 function trimRow(c, which) {
   const p = pending[c.id] || (pending[c.id] = { start: c.start, end: c.end });
   const val = el("b", {}, `${p[which].toFixed(2)} s`);
@@ -705,7 +783,8 @@ function clipCard(c) {
       trimRow(c, "start"), trimRow(c, "end"),
       el("div", { class: "actions" },
         el("button", { disabled: busy ? "" : null, onclick: () => { const p = pending[c.id]; clipAct(c.id, "/edit", { start: p.start, end: p.end }).then(() => delete pending[c.id]); } }, "Apply trim"),
-        el("label", { style: "flex-direction:row;align-items:center;gap:8px" }, "Layout", sel)),
+        el("label", { style: "flex-direction:row;align-items:center;gap:8px" }, "Layout", sel),
+        el("button", { disabled: busy ? "" : null, onclick: () => positionClip(c) }, "Position facecam/gameplay")),
       el("h3", {}, "Captions"), area,
       el("div", { class: "actions" },
         el("button", { disabled: busy ? "" : null, onclick: () => clipAct(c.id, "/edit", { caption_text: area.value }) }, "Re-render with these captions"),
@@ -797,6 +876,11 @@ async function loadClips(force) {
           el("div", {}, el("h3", {}, job.title || job.source || `Project ${job.id}`),
             el("div", { class: "src" }, job.source || "Source unavailable")))),
         progressPanel(job),
+        el("div", { class: "actions" },
+          job.status === "failed" && el("button", { class: "primary", onclick: () => act(job.id, "POST", "/retry") }, "Retry"),
+          job.status === "stopped" && el("button", { class: "primary", onclick: () => act(job.id, "POST", "/resume") }, "Resume"),
+          ["queued", "running"].includes(job.status) && el("button", { class: "quiet", onclick: () => act(job.id, "POST", "/stop") }, job.status === "queued" ? "Stop" : "Stop after this step"),
+          job.status === "stopping" && el("button", { class: "quiet", disabled: "" }, "Stopping...")),
         job.error && el("div", { class: "error", role: "alert" }, `Failed at ${job.stage}: ${job.error}`)];
       for (const c of list) {
         const csig = JSON.stringify(c);
@@ -867,6 +951,10 @@ $("#live").addEventListener("submit", (ev) => {
   try { saved = JSON.parse(localStorage.getItem("sc-look") || "{}"); } catch (e) {}
   if (Number.isFinite(saved.caption_x) && Number.isFinite(saved.caption_y)) {
     customCaptionPosition = { caption_x: saved.caption_x, caption_y: saved.caption_y };
+  }
+  const savedLayerKeys = ["facecam_x", "facecam_y", "gameplay_x", "gameplay_y"];
+  if (savedLayerKeys.some((k) => Number.isFinite(saved[k]))) {
+    customLayerPositions = Object.fromEntries(savedLayerKeys.filter((k) => Number.isFinite(saved[k])).map((k) => [k, saved[k]]));
   }
   for (const [k, names] of Object.entries(LOOK)) {
     const sel = $(`#look-${k}`);

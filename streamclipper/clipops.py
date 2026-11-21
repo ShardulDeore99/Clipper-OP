@@ -3,11 +3,11 @@ import logging
 import shutil
 
 from .clipwork import ClipWork, load_source
-from .config import job_cfg
+from .config import LAYER_POSITION_KEYS, STYLE_CHOICES, job_cfg
 from .framing import LAYOUTS
 
 log = logging.getLogger("streamclipper")
-EDITABLE = {"start", "end", "layout", "caption_text"}
+EDITABLE = {"start", "end", "layout", "caption_text", "facecam_style", *LAYER_POSITION_KEYS}
 
 
 def validate(cfg, changes: dict, current: dict, duration: float) -> dict:
@@ -24,6 +24,15 @@ def validate(cfg, changes: dict, current: dict, duration: float) -> dict:
         raise ValueError("That clip is too long.")
     if "layout" in out and out["layout"] not in LAYOUTS:
         raise ValueError(f"Layout must be one of {', '.join(LAYOUTS)}.")
+    if "facecam_style" in out and out["facecam_style"] not in STYLE_CHOICES["facecam_style"]:
+        raise ValueError(f"Gaming style must be one of {', '.join(STYLE_CHOICES['facecam_style'])}.")
+    for key in LAYER_POSITION_KEYS:
+        if key in out:
+            limit = 1080 if key.endswith("_x") else 1920
+            value = out[key]
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value <= limit:
+                raise ValueError(f"{key} must be a number between 0 and {limit}.")
+            out[key] = round(value)
     out["start"], out["end"] = round(start, 3), round(end, 3)
     return out
 

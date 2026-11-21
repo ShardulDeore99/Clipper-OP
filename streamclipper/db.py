@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS jobs(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   source TEXT NOT NULL, kind TEXT NOT NULL, mode TEXT NOT NULL,
   title TEXT, source_key TEXT,
-  status TEXT NOT NULL DEFAULT 'queued',      -- queued | running | done | failed
+  status TEXT NOT NULL DEFAULT 'queued',      -- queued | running | stopping | stopped | done | failed
   stage TEXT, progress REAL DEFAULT 0,        -- progress = fraction of the current stage
   error TEXT, meta TEXT DEFAULT '{}',
   created REAL, updated REAL, started REAL);
@@ -80,6 +80,11 @@ class Database:
         with self._tx() as c:
             return [r["id"] for r in c.execute(
                 "SELECT id FROM jobs WHERE status IN ('queued','running') ORDER BY id")]
+
+    def recover_stopping_jobs(self) -> None:
+        """A stop request survives a server restart as a stopped job, not a new run."""
+        with self._tx() as c:
+            c.execute("UPDATE jobs SET status='stopped', error=NULL, updated=? WHERE status='stopping'", (time.time(),))
 
     def update_job(self, job_id: int, meta: dict | None = None, **fields) -> None:
         bad = set(fields) - FIELDS

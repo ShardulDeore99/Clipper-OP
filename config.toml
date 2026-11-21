@@ -14,7 +14,7 @@ ffprobe = "ffprobe"
 
 [web]
 host = "127.0.0.1"         # keep as is: only this computer can open the UI
-port = 8765
+port = 8000
 
 [download]
 max_height = 720           # cap source resolution (saves time and disk)

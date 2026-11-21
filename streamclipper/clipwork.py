@@ -93,7 +93,10 @@ class ClipWork:
         layout = self.clip.get("layout") or self.cfg["framing"]["layout"] or "auto"
         if layout not in LAYOUTS:
             raise StageError("frame", f"Unknown layout '{layout}'.", f"Use one of {', '.join(LAYOUTS)}.")
+        position_keys = ("facecam_style", "facecam_x", "facecam_y", "gameplay_x", "gameplay_y")
+        positions = {k: self.clip[k] for k in position_keys if k in self.clip}
         inputs = {"start": self.clip["start"], "end": self.clip["end"], "layout": layout, "framing": self.cfg["framing"],
+                  "positions": positions,
                   "video": cache.sig(self.src.video, content=False), "v": 1}
         path = self.dir / "framing.json"
         if self._hit("frame", inputs, "path"):
@@ -101,7 +104,7 @@ class ClipWork:
         forced = layout if layout != "auto" else self.cfg["framing"]["layout"]
         detector = None if forced == "no_face" else get_detector()
         fr = frame_clip(self.cfg, self.cfg["tools"]["ffmpeg"], self.src.video, self.src.width, self.src.height,
-                        self.clip["start"], self.dur, detector, None if layout == "auto" else layout)
+                        self.clip["start"], self.dur, detector, None if layout == "auto" else layout, positions)
         path.write_text(json.dumps(fr), encoding="utf-8")
         self._save("frame", inputs, {"path": str(path)})
         return fr

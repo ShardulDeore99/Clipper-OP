@@ -229,6 +229,8 @@
     </form>
     <p class="msg" id="msg" role="alert"></p>
     <p class="notice" id="notice"></p>
+    <h2>Jobs</h2>
+    <div id="jobs" aria-live="polite"></div>
   </section>
 
   <section id="panel-live" role="tabpanel" aria-labelledby="tab-live" hidden>
@@ -420,20 +422,20 @@ function card(job) {
     el("div", { class: "head" }, el("div", { class: "title" }, job.title || "Preparing…"), el("span", { class: `chip ${job.status}` }, label)),
     el("div", { class: "src" }, job.source),
     progressPanel(job),
-    facts && el("p", { class: "facts" }, facts),
-    job.error && el("div", { class: "error", role: "alert" }, `Failed at ${job.stage}: ${job.error}`),
     el("div", { class: "actions" },
       job.status === "failed" && el("button", { class: "primary", onclick: () => act(job.id, "POST", "/retry") }, "Retry"),
       job.status === "stopped" && el("button", { class: "primary", onclick: () => act(job.id, "POST", "/resume") }, "Resume"),
       job.status === "done" && el("button", { onclick: () => act(job.id, "POST", "/retry") }, "Run again"),
       ["queued", "running"].includes(job.status) && el("button", { class: "quiet", onclick: () => act(job.id, "POST", "/stop") }, job.status === "queued" ? "Stop" : "Stop after this step"),
       job.status === "stopping" && el("button", { class: "quiet", disabled: "" }, "Stopping…"),
-      !["running", "stopping"].includes(job.status) && el("button", { class: "quiet", onclick: () => act(job.id, "DELETE", "") }, "Remove")));
+      !["running", "stopping"].includes(job.status) && el("button", { class: "quiet", onclick: () => act(job.id, "DELETE", "") }, "Remove")),
+    facts && el("p", { class: "facts" }, facts),
+    job.error && el("div", { class: "error", role: "alert" }, `Failed at ${job.stage}: ${job.error}`));
 }
 
 async function act(id, method, suffix) {
   try { await api(`/api/jobs/${id}${suffix}`, { method }); } catch (e) { $("#msg").textContent = e.message; }
-  refresh();
+  await Promise.all([refresh(), loadClips(true)]);
 }
 
 async function removeProject(id, name) {
@@ -874,6 +876,11 @@ async function loadClips(force) {
           el("div", {}, el("h3", {}, job.title || job.source || `Project ${job.id}`),
             el("div", { class: "src" }, job.source || "Source unavailable")))),
         progressPanel(job),
+        el("div", { class: "actions" },
+          job.status === "failed" && el("button", { class: "primary", onclick: () => act(job.id, "POST", "/retry") }, "Retry"),
+          job.status === "stopped" && el("button", { class: "primary", onclick: () => act(job.id, "POST", "/resume") }, "Resume"),
+          ["queued", "running"].includes(job.status) && el("button", { class: "quiet", onclick: () => act(job.id, "POST", "/stop") }, job.status === "queued" ? "Stop" : "Stop after this step"),
+          job.status === "stopping" && el("button", { class: "quiet", disabled: "" }, "Stopping...")),
         job.error && el("div", { class: "error", role: "alert" }, `Failed at ${job.stage}: ${job.error}`)];
       for (const c of list) {
         const csig = JSON.stringify(c);

@@ -74,6 +74,35 @@ def choose_layout(faces) -> tuple[str, dict]:
     return "single", {}
 
 
+def find_facecam(faces):
+    """Find a persistent small corner face, which is more likely to be a streamer's webcam."""
+    clusters = []
+    for frame_i, found in enumerate(faces):
+        for box in found:
+            x0, y0, x1, y1 = box
+            cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+            area = _area(box)
+            if area > 0.10 or not (cx < 0.38 or cx > 0.62 or cy < 0.38 or cy > 0.62):
+                continue
+            cluster = next((c for c in clusters
+                            if abs(c["cx"] - cx) < 0.12 and abs(c["cy"] - cy) < 0.12), None)
+            if cluster is None:
+                cluster = {"boxes": [], "frames": set(), "cx": cx, "cy": cy}
+                clusters.append(cluster)
+            cluster["boxes"].append(box)
+            cluster["frames"].add(frame_i)
+            cluster["cx"] = float(np.median([(b[0] + b[2]) / 2 for b in cluster["boxes"]]))
+            cluster["cy"] = float(np.median([(b[1] + b[3]) / 2 for b in cluster["boxes"]]))
+
+    if not clusters:
+        return None
+    best = max(clusters, key=lambda c: (len(c["frames"]), float(np.median([_area(b) for b in c["boxes"]]))))
+    min_frames = max(1, int(np.ceil(len(faces) * 0.12)))
+    if len(best["frames"]) < min_frames:
+        return None
+    return [float(np.median([b[k] for b in best["boxes"]])) for k in range(4)]
+
+
 def _even(v):
     return max(2, int(round(v / 2)) * 2)
 
@@ -165,6 +194,12 @@ def frame_clip(cfg, ffmpeg, video, src_w, src_h, start, dur, detector, layout_ov
     faces = [detector.detect(f) for f in frames] if (forced not in ("no_face", "fit_blur") and detector is not None) else [[] for _ in frames]
     resets = set(shot_starts(frames)[1:])
     chosen, info = choose_layout(faces)
+    if forced == "gameplay_facecam":
+        facecam = find_facecam(faces)
+        if facecam is not None:
+            info = {**info, "facecam": facecam}
+        else:
+            info.pop("facecam", None)
     layout = chosen if forced == "auto" else forced
     fr = {"layout": layout, "auto_layout": chosen, "forced": forced != "auto", "W": src_w, "H": src_h,
           "samples": [{"t": t, "boxes": [[round(v, 3) for v in b] for b in f]} for t, f in zip(times, faces)],
@@ -185,9 +220,7 @@ def frame_clip(cfg, ffmpeg, video, src_w, src_h, start, dur, detector, layout_ov
                          {"dst": [0, 960, OUT_W, 960], "static": _static_crop(info["right"], src_w, src_h, 1080 / 960)}]
     elif layout == "gameplay_facecam":
         if "facecam" not in info:
-            prim = [max(f, key=_area) for f in faces if f]
-            info = {"facecam": [float(np.median([b[k] for b in prim])) for k in range(4)]} if prim else \
-                   {"facecam": [0.75, 0.6, 0.98, 0.98]}
+            info = {"facecam": [0.72, 0.68, 0.98, 0.98]}
         box = info["facecam"]
         pad = 0.9  # grow the face box into a facecam window
         w, h = box[2] - box[0], box[3] - box[1]
